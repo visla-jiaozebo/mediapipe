@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                   <div class="action-buttons">
+                    <button id="resetBtn" class="btn btn-secondary">重置参数</button>
+                    <button id="downloadBtn" class="btn btn-primary">下载结果</button>
+                    <button id="debugSkinBtn" class="btn btn-debug" onclick="toggleSkinMaskDebug()">调试皮肤区域</button>
+                </div>
+
+                <!-- 调试信息显示 -->
+                <div id="debugInfo" class="debug-info" style="display: none;">
+                    <h4>🔍 皮肤区域调试</h4>
+                    <canvas id="debugCanvas" style="max-width: 200px; border: 1px solid #ddd;"></canvas>
+                    <p><small>白色区域为检测到的皮肤区域</small></p>
+                </div>tle>人脸美颜Demo - MediaPipe + OpenCV.js</title>
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <link rel="alternate icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%23667eea'/><text x='16' y='24' font-family='Arial' font-size='20' text-anchor='middle' fill='white'>✨</text></svg>">
+    
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>� 精确人脸美颜系统</h1>
+            <p>基于MediaPipe 468关键点的智能区域化美颜 + 大眼瘦脸</p>
+        </header>
+
+        <div class="main-content">
+            <!-- 图片上传区域 -->
+            <div class="upload-section">
+                <div class="upload-area" id="uploadArea">
+                    <input type="file" id="imageInput" accept="image/*" style="display: none;">
+                    <div class="upload-content">
+                        <div class="upload-icon">📷</div>
+                        <p>点击或拖拽上传人脸图片</p>
+                        <small>支持 JPG、PNG 格式</small>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 图片显示和处理区域 -->
+            <div class="image-section">
+                <div class="image-container">
+                    <div class="image-box">
+                        <h3>原图</h3>
+                        <canvas id="originalCanvas"></canvas>
+                    </div>
+                    <div class="image-box">
+                        <h3>美颜效果</h3>
+                        <canvas id="resultCanvas"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 美颜参数控制面板 -->
+            <div class="controls-section">
+                <h3>🎨 精确美颜参数调整</h3>
+                <div class="controls-grid">
+                    <!-- 皮肤美化 -->
+                    <div class="control-category">
+                        <h4>💄 皮肤美化</h4>
+                        
+                        <div class="control-group">
+                            <label for="skinSmoothing">精确磨皮</label>
+                            <div class="slider-container">
+                                <input type="range" id="skinSmoothing" min="0" max="100" value="30">
+                                <span class="value-display" id="skinSmoothingValue">30</span>
+                            </div>
+                            <small>只处理皮肤区域，保护眼部嘴唇</small>
+                        </div>
+
+                        <div class="control-group">
+                            <label for="skinBrightening">皮肤美白</label>
+                            <div class="slider-container">
+                                <input type="range" id="skinBrightening" min="0" max="50" value="10">
+                                <span class="value-display" id="skinBrighteningValue">10</span>
+                            </div>
+                            <small>针对面部皮肤区域美白</small>
+                        </div>
+
+                        <div class="control-group">
+                            <label for="skinWarmth">皮肤红润</label>
+                            <div class="slider-container">
+                                <input type="range" id="skinWarmth" min="0" max="30" value="5">
+                                <span class="value-display" id="skinWarmthValue">5</span>
+                            </div>
+                            <small>增加面部皮肤红润度</small>
+                        </div>
+                    </div>
+
+                    <!-- 面部塑形 -->
+                    <div class="control-category">
+                        <h4>✨ 面部塑形</h4>
+                        
+                        <div class="control-group">
+                            <label for="eyeEnlarge">大眼效果</label>
+                            <div class="slider-container">
+                                <input type="range" id="eyeEnlarge" min="0" max="50" value="15">
+                                <span class="value-display" id="eyeEnlargeValue">15</span>
+                            </div>
+                            <small>基于眼部关键点的放大</small>
+                        </div>
+
+                        <div class="control-group">
+                            <label for="faceSlim">瘦脸程度</label>
+                            <div class="slider-container">
+                                <input type="range" id="faceSlim" min="0" max="50" value="10">
+                                <span class="value-display" id="faceSlimValue">10</span>
+                            </div>
+                            <small>基于脸部轮廓的收缩</small>
+                        </div>
+
+                        <div class="control-group">
+                            <label for="noseThin">瘦鼻效果</label>
+                            <div class="slider-container">
+                                <input type="range" id="noseThin" min="0" max="30" value="5">
+                                <span class="value-display" id="noseThinValue">5</span>
+                            </div>
+                            <small>鼻部轮廓优化</small>
+                        </div>
+                    </div>
+
+                    <!-- 整体调节 -->
+                    <div class="control-category">
+                        <h4>🔧 整体调节</h4>
+                        
+                        <div class="control-group">
+                            <label for="sharpness">锐化强度</label>
+                            <div class="slider-container">
+                                <input type="range" id="sharpness" min="0" max="100" value="20">
+                                <span class="value-display" id="sharpnessValue">20</span>
+                            </div>
+                            <small>提升整体清晰度</small>
+                        </div>
+
+                        <div class="control-group">
+                            <label for="contrast">对比度</label>
+                            <div class="slider-container">
+                                <input type="range" id="contrast" min="-50" max="50" value="5">
+                                <span class="value-display" id="contrastValue">5</span>
+                            </div>
+                            <small>调整明暗对比</small>
+                        </div>
+
+                        <div class="control-group">
+                            <label for="saturation">饱和度</label>
+                            <div class="slider-container">
+                                <input type="range" id="saturation" min="-50" max="50" value="10">
+                                <span class="value-display" id="saturationValue">10</span>
+                            </div>
+                            <small>调整色彩鲜艳程度</small>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="action-buttons">
+                    <button id="resetBtn" class="btn btn-secondary">重置参数</button>
+                    <button id="downloadBtn" class="btn btn-primary">下载精确美颜图片</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 加载状态 -->
+        <div class="loading" id="loading" style="display: none;">
+            <div class="spinner"></div>
+            <p>正在加载MediaPipe和OpenCV.js...</p>
+        </div>
+
+        <!-- 人脸检测信息 -->
+        <div class="face-info" id="faceInfo" style="display: none;">
+            <h4>检测信息</h4>
+            <p id="faceCount">检测到 0 张人脸</p>
+            <div id="landmarkInfo"></div>
+        </div>
+    </div>
+
+    <!-- MediaPipe 脚本 -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+    
+    <!-- OpenCV.js -->
+    <script async src="https://docs.opencv.org/4.10.0/opencv.js" onload="onOpenCvReady();" type="text/javascript"></script>
+    
+    <!-- 配置文件 -->
+    <script src="config.js"></script>
+    
+    <!-- 精确美颜脚本 -->
+    <script src="precise-face-beauty.js"></script>
+</body>
+</html>

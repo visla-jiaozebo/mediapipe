@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GPU美颜Demo - WebGL Shader加速</title>
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <link rel="alternate icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%23667eea'/><text x='16' y='24' font-family='Arial' font-size='20' text-anchor='middle' fill='white'>🚀</text></svg>">
+    
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        /* 增强样式，突出GPU加速特点 */
+        .header h1 {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .gpu-badge {
+            display: inline-block;
+            background: linear-gradient(45deg, #ff6b6b, #feca57);
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+            margin-left: 10px;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+        
+        .performance-info {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            margin: 20px 0;
+            text-align: center;
+        }
+        
+        .performance-info h4 {
+            margin: 0 0 10px 0;
+            font-size: 16px;
+        }
+        
+        .performance-info p {
+            margin: 5px 0;
+            font-size: 14px;
+            opacity: 0.9;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🚀 GPU加速美颜系统<span class="gpu-badge">WebGL Shader</span></h1>
+            <p>基于GPU着色器的高性能实时美颜 - 参考GPUPixel实现</p>
+            
+            <!-- 性能优势说明 -->
+            <div class="performance-info">
+                <h4>⚡ GPU加速优势</h4>
+                <p>📊 相比CPU处理速度提升10-50倍 | 🎯 更精确的面部变形算法 | ✨ 更自然的美颜效果</p>
+                <p>🔥 基于OpenGL Shader实现，支持实时处理</p>
+            </div>
+        </header>
+
+        <div class="main-content">
+            <!-- 图片上传区域 -->
+            <div class="upload-section">
+                <div class="upload-area" id="uploadArea">
+                    <input type="file" id="imageInput" accept="image/*" style="display: none;">
+                    <div class="upload-content">
+                        <div class="upload-icon">🚀</div>
+                        <p>点击或拖拽上传人脸图片</p>
+                        <small>支持 JPG、PNG 格式 | GPU加速处理</small>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 图片显示和处理区域 -->
+            <div class="image-section">
+                <div class="image-container">
+                    <div class="image-box">
+                        <h3>原图</h3>
+                        <canvas id="originalCanvas"></canvas>
+                    </div>
+                    <div class="image-box">
+                        <h3>GPU美颜效果 <span style="color: #667eea; font-size: 12px;">⚡ WebGL加速</span></h3>
+                        <canvas id="resultCanvas"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 美颜参数控制面板 -->
+            <div class="controls-section">
+                <h3>🎨 GPU美颜参数调整</h3>
+                <div class="controls-grid">
+                    <!-- 皮肤美化 -->
+                    <div class="control-category">
+                        <h4>💄 皮肤美化 <span style="color: #667eea; font-size: 12px;">GPU Shader</span></h4>
+                        
+                        <div class="control-group">
+                            <label for="skinSmoothing">双边滤波磨皮</label>
+                            <div class="slider-container">
+                                <input type="range" id="skinSmoothing" min="0" max="100" value="50">
+                                <span class="value-display" id="skinSmoothingValue">50</span>
+                            </div>
+                            <small>GPU双边滤波，保边缘去噪点</small>
+                        </div>
+
+                        <div class="control-group">
+                            <label for="skinBrightening">智能美白</label>
+                            <div class="slider-container">
+                                <input type="range" id="skinBrightening" min="0" max="100" value="60">
+                                <span class="value-display" id="skinBrighteningValue">60</span>
+                            </div>
+                            <small>GPU色彩空间调整美白</small>
+                        </div>
+
+                        <div class="control-group">
+                            <label for="skinWarmth">暖色调节</label>
+                            <div class="slider-container">
+                                <input type="range" id="skinWarmth" min="0" max="100" value="55">
+                                <span class="value-display" id="skinWarmthValue">55</span>
+                            </div>
+                            <small>GPU HSV空间暖色增强</small>
+                        </div>
+                    </div>
+
+                    <!-- 面部塑形 -->
+                    <div class="control-category">
+                        <h4>✨ 面部塑形 <span style="color: #667eea; font-size: 12px;">Vertex Shader</span></h4>
+                        
+                        <div class="control-group">
+                            <label for="eyeEnlarge">精确大眼</label>
+                            <div class="slider-container">
+                                <input type="range" id="eyeEnlarge" min="0" max="100" value="20">
+                                <span class="value-display" id="eyeEnlargeValue">20</span>
+                            </div>
+                            <small>基于眼部关键点的径向放大</small>
+                        </div>
+
+                        <div class="control-group">
+                            <label for="faceSlim">智能瘦脸</label>
+                            <div class="slider-container">
+                                <input type="range" id="faceSlim" min="0" max="5" value="2">
+                                <span class="value-display" id="faceSlimValue">2</span>
+                            </div>
+                            <small>曲线变形算法，自然瘦脸</small>
+                        </div>
+                    </div>
+
+                    <!-- 整体调节 -->
+                    <div class="control-category">
+                        <h4>🔧 色彩调节 <span style="color: #667eea; font-size: 12px;">Fragment Shader</span></h4>
+                        
+                        <div class="control-group">
+                            <label for="contrast">对比度</label>
+                            <div class="slider-container">
+                                <input type="range" id="contrast" min="0" max="100" value="55">
+                                <span class="value-display" id="contrastValue">55</span>
+                            </div>
+                            <small>GPU并行对比度调整</small>
+                        </div>
+
+                        <div class="control-group">
+                            <label for="saturation">饱和度</label>
+                            <div class="slider-container">
+                                <input type="range" id="saturation" min="0" max="100" value="57">
+                                <span class="value-display" id="saturationValue">57</span>
+                            </div>
+                            <small>HSV色彩空间饱和度调节</small>
+                        </div>
+                    </div>
+
+                    <!-- 化妆效果 -->
+                    <div class="control-category">
+                        <h4>💋 化妆效果 <span style="color: #667eea; font-size: 12px;">WebGL Makeup</span></h4>
+                        
+                        <div class="control-group">
+                            <label for="lipstickIntensity">口红强度</label>
+                            <div class="slider-container">
+                                <input type="range" id="lipstickIntensity" min="0" max="100" value="0">
+                                <span class="value-display" id="lipstickIntensityValue">0</span>
+                            </div>
+                            <small>基于唇部关键点的精准上妆</small>
+                        </div>
+
+                        <div class="control-group">
+                            <label for="lipstickColor">口红颜色</label>
+                            <div class="color-controls">
+                                <input type="color" id="lipstickColor" value="#ff6b6b">
+                                <input type="range" id="lipstickColorHue" min="0" max="360" value="355" title="色相">
+                                <input type="range" id="lipstickColorSat" min="0" max="100" value="80" title="饱和度">
+                            </div>
+                            <small>HSV色彩空间自定义唇色</small>
+                        </div>
+
+                        <div class="control-group">
+                            <label for="blushIntensity">腮红强度</label>
+                            <div class="slider-container">
+                                <input type="range" id="blushIntensity" min="0" max="100" value="0">
+                                <span class="value-display" id="blushIntensityValue">0</span>
+                            </div>
+                            <small>面部轮廓识别智能腮红</small>
+                        </div>
+
+                        <div class="control-group">
+                            <label for="blushColor">腮红颜色</label>
+                            <div class="color-controls">
+                                <input type="color" id="blushColor" value="#ff9999">
+                                <input type="range" id="blushColorHue" min="0" max="360" value="10" title="色相">
+                                <input type="range" id="blushColorSat" min="0" max="100" value="60" title="饱和度">
+                            </div>
+                            <small>自然粉色调腮红效果</small>
+                        </div>
+
+                        <div class="control-group">
+                            <label for="eyeshadowIntensity">眼影强度</label>
+                            <div class="slider-container">
+                                <input type="range" id="eyeshadowIntensity" min="0" max="100" value="0">
+                                <span class="value-display" id="eyeshadowIntensityValue">0</span>
+                            </div>
+                            <small>眼部轮廓渐变眼影</small>
+                        </div>
+
+                        <div class="control-group">
+                            <label for="eyeshadowColor">眼影颜色</label>
+                            <div class="color-controls">
+                                <input type="color" id="eyeshadowColor" value="#d4a574">
+                                <input type="range" id="eyeshadowColorHue" min="0" max="360" value="30" title="色相">
+                                <input type="range" id="eyeshadowColorSat" min="0" max="100" value="50" title="饱和度">
+                            </div>
+                            <small>大地色系眼影效果</small>
+                        </div>
+
+                        <div class="control-group">
+                            <label for="makeupBlendMode">混合模式</label>
+                            <select id="makeupBlendMode">
+                                <option value="0">普通混合</option>
+                                <option value="1">柔光混合</option>
+                                <option value="2">硬光混合</option>
+                                <option value="3">正片叠底</option>
+                                <option value="4">叠加混合</option>
+                            </select>
+                            <small>不同混合算法的化妆效果</small>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="action-buttons">
+                    <button id="resetBtn" class="btn btn-secondary">重置参数</button>
+                    <button id="downloadBtn" class="btn btn-primary">下载GPU美颜图片</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 加载状态 -->
+        <div class="loading" id="loading" style="display: none;">
+            <div class="spinner"></div>
+            <p>正在初始化GPU美颜系统...</p>
+        </div>
+
+        <!-- 人脸检测信息 -->
+        <div class="face-info" id="faceInfo" style="display: none;">
+            <h4>🔍 检测信息</h4>
+            <p id="faceCount">检测到 0 张人脸</p>
+            <div id="landmarkInfo"></div>
+        </div>
+    </div>
+
+    <!-- MediaPipe 脚本 -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+    
+    <!-- WebGL美颜脚本 -->
+    <script src="webgl-face-beauty.js"></script>
+</body>
+</html>

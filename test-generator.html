@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>测试图片生成器</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        canvas {
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            display: block;
+            margin: 20px auto;
+        }
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px;
+        }
+        button:hover {
+            background: #5a67d8;
+        }
+        .info {
+            background: #e8f5e8;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 20px 0;
+            border-left: 4px solid #28a745;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🖼️ 美颜测试图片生成器</h1>
+        
+        <div class="info">
+            <strong>说明：</strong> 这是一个简单的测试图片生成器，可以创建带有基本图形的图片用于测试美颜功能。
+            右键点击图片可以"另存为"保存到本地，然后在美颜demo中上传测试。
+        </div>
+
+        <div style="text-align: center;">
+            <button onclick="generateTestImage()">生成测试图片</button>
+            <button onclick="generatePortrait()">生成肖像图片</button>
+            <button onclick="generateColorful()">生成彩色图片</button>
+        </div>
+
+        <canvas id="testCanvas" width="400" height="300"></canvas>
+
+        <div style="text-align: center; margin-top: 20px;">
+            <p><strong>使用方法：</strong></p>
+            <ol style="text-align: left; display: inline-block;">
+                <li>点击上方按钮生成测试图片</li>
+                <li>右键点击图片选择"另存为"</li>
+                <li>保存为PNG格式</li>
+                <li>在美颜demo中上传测试</li>
+            </ol>
+        </div>
+    </div>
+
+    <script>
+        function generateTestImage() {
+            const canvas = document.getElementById('testCanvas');
+            const ctx = canvas.getContext('2d');
+            
+            // 清空画布
+            ctx.fillStyle = '#f0f8ff';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // 绘制渐变背景
+            const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+            gradient.addColorStop(0, '#87CEEB');
+            gradient.addColorStop(1, '#E0E6FF');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // 绘制一些基本形状
+            ctx.fillStyle = '#FF6B6B';
+            ctx.beginPath();
+            ctx.arc(100, 100, 40, 0, 2 * Math.PI);
+            ctx.fill();
+            
+            ctx.fillStyle = '#4ECDC4';
+            ctx.fillRect(200, 60, 80, 80);
+            
+            ctx.fillStyle = '#45B7D1';
+            ctx.beginPath();
+            ctx.moveTo(320, 60);
+            ctx.lineTo(360, 140);
+            ctx.lineTo(280, 140);
+            ctx.closePath();
+            ctx.fill();
+            
+            // 添加文字
+            ctx.fillStyle = '#2C3E50';
+            ctx.font = 'bold 24px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('美颜测试图片', canvas.width / 2, 200);
+            
+            ctx.font = '16px Arial';
+            ctx.fillText('Test Image for Beauty Filter', canvas.width / 2, 250);
+        }
+
+        function generatePortrait() {
+            const canvas = document.getElementById('testCanvas');
+            const ctx = canvas.getContext('2d');
+            
+            // 清空画布
+            ctx.fillStyle = '#FFF8DC';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // 绘制简单的人脸轮廓
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            
+            // 脸部轮廓
+            ctx.fillStyle = '#FDBCB4';
+            ctx.beginPath();
+            ctx.ellipse(centerX, centerY, 80, 100, 0, 0, 2 * Math.PI);
+            ctx.fill();
+            
+            // 眼睛
+            ctx.fillStyle = '#000';
+            ctx.beginPath();
+            ctx.ellipse(centerX - 25, centerY - 20, 8, 5, 0, 0, 2 * Math.PI);
+            ctx.fill();
+            
+            ctx.beginPath();
+            ctx.ellipse(centerX + 25, centerY - 20, 8, 5, 0, 0, 2 * Math.PI);
+            ctx.fill();
+            
+            // 鼻子
+            ctx.strokeStyle = '#D2B48C';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(centerX, centerY - 5);
+            ctx.lineTo(centerX - 5, centerY + 10);
+            ctx.stroke();
+            
+            // 嘴巴
+            ctx.strokeStyle = '#CD5C5C';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.arc(centerX, centerY + 20, 15, 0, Math.PI);
+            ctx.stroke();
+            
+            // 头发
+            ctx.fillStyle = '#8B4513';
+            ctx.beginPath();
+            ctx.ellipse(centerX, centerY - 60, 90, 40, 0, 0, Math.PI);
+            ctx.fill();
+        }
+
+        function generateColorful() {
+            const canvas = document.getElementById('testCanvas');
+            const ctx = canvas.getContext('2d');
+            
+            // 清空画布
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // 绘制彩色图案
+            const colors = ['#FF0000', '#00FF00', '#0000FF', '#FFFF00', '#FF00FF', '#00FFFF'];
+            
+            for (let i = 0; i < 6; i++) {
+                ctx.fillStyle = colors[i];
+                const x = (i % 3) * 120 + 80;
+                const y = Math.floor(i / 3) * 120 + 80;
+                
+                ctx.beginPath();
+                ctx.arc(x, y, 50, 0, 2 * Math.PI);
+                ctx.fill();
+                
+                // 添加渐变效果
+                const gradient = ctx.createRadialGradient(x, y, 0, x, y, 50);
+                gradient.addColorStop(0, colors[i]);
+                gradient.addColorStop(1, 'rgba(255,255,255,0.3)');
+                ctx.fillStyle = gradient;
+                ctx.fill();
+            }
+            
+            // 添加标题
+            ctx.fillStyle = '#FFF';
+            ctx.font = 'bold 20px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('彩色测试图片', canvas.width / 2, 280);
+        }
+
+        // 页面加载时生成默认图片
+        window.onload = function() {
+            generateTestImage();
+        };
+    </script>
+</body>
+</html>

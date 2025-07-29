@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Face Beauty System Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background: #f5f5f5;
+        }
+        .test-container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+        .status.success { background: #d4edda; color: #155724; }
+        .status.error { background: #f8d7da; color: #721c24; }
+        .status.warning { background: #fff3cd; color: #856404; }
+        .test-button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        .test-button:hover { background: #0056b3; }
+        .code-block {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            font-family: monospace;
+            margin: 10px 0;
+            white-space: pre-wrap;
+        }
+        .feature-list {
+            list-style-type: none;
+            padding: 0;
+        }
+        .feature-list li {
+            padding: 8px 0;
+            border-bottom: 1px solid #eee;
+        }
+        .feature-list li:before {
+            content: "✓ ";
+            color: #28a745;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1>🎭 Face Beauty System - 测试页面</h1>
+        <p>这个页面用于测试和验证人脸美颜系统的各项功能。</p>
+
+        <div class="test-section">
+            <h2>🔧 系统状态检查</h2>
+            <button class="test-button" onclick="checkSystemStatus()">检查系统状态</button>
+            <div id="systemStatus"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>🎯 功能特性</h2>
+            <h3>已实现的功能：</h3>
+            <ul class="feature-list">
+                <li>基于MediaPipe的468个人脸关键点检测</li>
+                <li>精确的皮肤区域识别（排除眼部、嘴唇、眉毛）</li>
+                <li>皮肤磨皮和美白效果</li>
+                <li>大眼效果（基于瞳孔中心的径向变换）</li>
+                <li>瘦脸效果（基于面部轮廓的内向压缩）</li>
+                <li>实时参数调节（10个可调参数）</li>
+                <li>原图与处理结果对比显示</li>
+                <li>内存管理和错误处理</li>
+            </ul>
+
+            <h3>技术架构：</h3>
+            <ul class="feature-list">
+                <li>MediaPipe FaceMesh v1.0+ (人脸检测)</li>
+                <li>OpenCV.js v4.x (图像处理)</li>
+                <li>HTML5 Canvas (图像显示)</li>
+                <li>现代CSS Grid布局</li>
+                <li>响应式UI设计</li>
+            </ul>
+        </div>
+
+        <div class="test-section">
+            <h2>📋 测试说明</h2>
+            <ol>
+                <li><strong>启动系统：</strong> 访问 <a href="http://localhost:8080" target="_blank">http://localhost:8080</a></li>
+                <li><strong>上传图片：</strong> 点击上传区域或拖拽包含人脸的图片</li>
+                <li><strong>调节参数：</strong> 使用右侧控制面板调节美颜效果</li>
+                <li><strong>观察效果：</strong> 左侧显示原图，右侧显示美颜后的效果</li>
+                <li><strong>保存结果：</strong> 点击"下载结果"按钮保存处理后的图片</li>
+            </ol>
+
+            <h3>推荐测试图片类型：</h3>
+            <ul>
+                <li>✅ 单人正面照片</li>
+                <li>✅ 清晰的人脸特征</li>
+                <li>✅ 良好的光照条件</li>
+                <li>✅ JPG/PNG格式，分辨率适中（500-2000px）</li>
+            </ul>
+        </div>
+
+        <div class="test-section">
+            <h2>⚙️ 参数说明</h2>
+            
+            <h3>皮肤美化参数：</h3>
+            <div class="code-block">• 磨皮强度 (0-100): 使用双边滤波平滑皮肤纹理
+• 美白程度 (0-100): 提升皮肤区域亮度
+• 红润度 (0-100): 增强皮肤红色通道
+• 对比度 (0-100): 调整整体对比度</div>
+
+            <h3>面部塑形参数：</h3>
+            <div class="code-block">• 大眼强度 (0-100): 基于瞳孔中心的径向放大
+• 瘦脸强度 (0-100): 面部轮廓向内压缩变形</div>
+
+            <h3>全局调整参数：</h3>
+            <div class="code-block">• 整体亮度 (0-100): 全图亮度调节
+• 饱和度 (0-100): 颜色饱和度增强
+• 清晰度 (0-100): 图像锐化处理
+• 暖色调 (0-100): 色温调整</div>
+        </div>
+
+        <div class="test-section">
+            <h2>🚀 快速启动</h2>
+            <button class="test-button" onclick="openMainApp()">打开美颜应用</button>
+            <button class="test-button" onclick="showTechnicalDoc()">查看技术文档</button>
+            <button class="test-button" onclick="generateTestImage()">生成测试用例</button>
+        </div>
+
+        <div class="test-section">
+            <h2>🐛 故障排除</h2>
+            <h3>常见问题：</h3>
+            <ul>
+                <li><strong>页面无法加载：</strong> 确保Python服务器在端口8080运行</li>
+                <li><strong>图片无法处理：</strong> 检查图片是否包含清晰的人脸</li>
+                <li><strong>效果不明显：</strong> 适当调高参数数值（建议从30-50开始）</li>
+                <li><strong>处理速度慢：</strong> 尝试使用较小分辨率的图片</li>
+            </ul>
+            
+            <div id="troubleshooting"></div>
+        </div>
+    </div>
+
+    <script>
+        function checkSystemStatus() {
+            const statusDiv = document.getElementById('systemStatus');
+            statusDiv.innerHTML = '<div class="status warning">正在检查系统状态...</div>';
+            
+            // 检查服务器连接
+            fetch('http://localhost:8080/')
+                .then(response => {
+                    if (response.ok) {
+                        statusDiv.innerHTML = `
+                            <div class="status success">✅ 服务器连接正常 (端口8080)</div>
+                            <div class="status success">✅ HTTP服务器运行中</div>
+                            <div class="status success">✅ 主应用页面可访问</div>
+                        `;
+                    } else {
+                        throw new Error('服务器响应异常');
+                    }
+                })
+                .catch(error => {
+                    statusDiv.innerHTML = `
+                        <div class="status error">❌ 服务器连接失败</div>
+                        <div class="status warning">请确保运行: python -m http.server 8080</div>
+                    `;
+                });
+        }
+
+        function openMainApp() {
+            window.open('http://localhost:8080', '_blank');
+        }
+
+        function showTechnicalDoc() {
+            window.open('http://localhost:8080/TECHNICAL_DOC.md', '_blank');
+        }
+
+        function generateTestImage() {
+            window.open('http://localhost:8080/test-generator.html', '_blank');
+        }
+
+        // 页面加载时自动检查状态
+        window.onload = function() {
+            checkSystemStatus();
+        };
+    </script>
+</body>
+</html>

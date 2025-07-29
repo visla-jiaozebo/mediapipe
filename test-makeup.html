@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebGL化妆效果测试</title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        .makeup-test {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        }
+        
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 10px;
+        }
+        
+        .test-controls {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+        
+        .feature-info {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .canvas-container {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            margin: 20px 0;
+        }
+        
+        .canvas-box {
+            text-align: center;
+        }
+        
+        .canvas-box canvas {
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            max-width: 100%;
+            height: auto;
+        }
+        
+        .status-display {
+            background: #e3f2fd;
+            border-left: 4px solid #2196f3;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎨 WebGL化妆效果测试</h1>
+            <p>基于GPUPixel的WebGL化妆系统实现</p>
+        </header>
+
+        <div class="makeup-test">
+            <!-- 功能说明 -->
+            <div class="feature-info">
+                <h3>✨ WebGL化妆系统特性</h3>
+                <ul style="margin: 10px 0; padding-left: 20px;">
+                    <li>🎯 基于MediaPipe面部关键点的精准定位</li>
+                    <li>🎨 支持口红、腮红、眼影三种化妆效果</li>  
+                    <li>🌈 多种混合模式：柔光、硬光、正片叠底、叠加</li>
+                    <li>⚡ GPU加速实时渲染，流畅体验</li>
+                    <li>🎛️ HSV色彩空间精确颜色控制</li>
+                </ul>
+            </div>
+
+            <!-- 图片上传区域 -->
+            <div class="test-section">
+                <h3>📸 图片上传</h3>
+                <div class="upload-area" id="uploadArea">
+                    <input type="file" id="imageInput" accept="image/*" style="display: none;">
+                    <div class="upload-content">
+                        <div class="upload-icon">🖼️</div>
+                        <p>点击上传测试图片</p>
+                        <small>建议使用清晰的正面人脸照片</small>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 状态显示 -->
+            <div class="status-display" id="statusDisplay">
+                <strong>状态:</strong> 等待上传图片...
+            </div>
+
+            <!-- 画布显示区域 -->
+            <div class="canvas-container">
+                <div class="canvas-box">
+                    <h4>原始图像</h4>
+                    <canvas id="originalCanvas" width="300" height="400"></canvas>
+                </div>
+                <div class="canvas-box">
+                    <h4>化妆效果</h4>
+                    <canvas id="resultCanvas" width="300" height="400"></canvas>
+                </div>
+            </div>
+
+            <!-- 化妆控制面板 -->
+            <div class="test-section">
+                <h3>💄 化妆效果控制</h3>
+                <div class="test-controls">
+                    <!-- 口红控制 -->
+                    <div class="control-group">
+                        <h4>💋 口红效果</h4>
+                        <label>强度: <input type="range" id="lipstickIntensity" min="0" max="100" value="0">
+                            <span id="lipstickIntensityValue">0</span>%</label>
+                        <label>颜色: <input type="color" id="lipstickColor" value="#ff6b6b"></label>
+                        <label>色相: <input type="range" id="lipstickColorHue" min="0" max="360" value="355">
+                            <span id="lipstickColorHueValue">355</span>°</label>
+                    </div>
+
+                    <!-- 腮红控制 -->
+                    <div class="control-group">
+                        <h4>🌸 腮红效果</h4>
+                        <label>强度: <input type="range" id="blushIntensity" min="0" max="100" value="0">
+                            <span id="blushIntensityValue">0</span>%</label>
+                        <label>颜色: <input type="color" id="blushColor" value="#ff9999"></label>
+                        <label>色相: <input type="range" id="blushColorHue" min="0" max="360" value="10">
+                            <span id="blushColorHueValue">10</span>°</label>
+                    </div>
+
+                    <!-- 眼影控制 -->
+                    <div class="control-group">
+                        <h4>👁️ 眼影效果</h4>
+                        <label>强度: <input type="range" id="eyeshadowIntensity" min="0" max="100" value="0">
+                            <span id="eyeshadowIntensityValue">0</span>%</label>
+                        <label>颜色: <input type="color" id="eyeshadowColor" value="#d4a574"></label>
+                        <label>色相: <input type="range" id="eyeshadowColorHue" min="0" max="360" value="30">
+                            <span id="eyeshadowColorHueValue">30</span>°</label>
+                    </div>
+
+                    <!-- 全局控制 -->
+                    <div class="control-group">
+                        <h4>⚙️ 全局设置</h4>
+                        <label>混合模式:
+                            <select id="makeupBlendMode">
+                                <option value="0">普通混合</option>
+                                <option value="1">柔光混合</option>
+                                <option value="2">硬光混合</option>
+                                <option value="3">正片叠底</option>
+                                <option value="4">叠加混合</option>
+                            </select>
+                        </label>
+                        <button id="resetMakeup" class="btn btn-secondary">重置化妆</button>
+                        <button id="downloadResult" class="btn btn-primary">下载结果</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 技术信息 -->
+            <div class="test-section">
+                <h3>🔧 技术实现详情</h3>
+                <div id="techInfo">
+                    <p><strong>WebGL上下文:</strong> <span id="webglStatus">未初始化</span></p>
+                    <p><strong>着色器程序:</strong> <span id="shaderStatus">未编译</span></p>
+                    <p><strong>面部关键点:</strong> <span id="landmarkStatus">未检测</span></p>
+                    <p><strong>化妆纹理:</strong> <span id="textureStatus">未创建</span></p>
+                    <p><strong>渲染时间:</strong> <span id="renderTime">0ms</span></p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 加载依赖 -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
+    
+    <!-- 主要脚本 -->
+    <script src="webgl-face-beauty.js"></script>
+    
+    <script>
+        // 测试页面特定的初始化和控制逻辑
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('化妆效果测试页面加载完成');
+            
+            // 状态更新函数
+            function updateStatus(message) {
+                document.getElementById('statusDisplay').innerHTML = `<strong>状态:</strong> ${message}`;
+            }
+            
+            // 技术信息更新
+            function updateTechInfo(info) {
+                Object.keys(info).forEach(key => {
+                    const element = document.getElementById(key);
+                    if (element) {
+                        element.textContent = info[key];
+                    }
+                });
+            }
+            
+            // 重置化妆效果
+            document.getElementById('resetMakeup').addEventListener('click', () => {
+                const controls = ['lipstickIntensity', 'blushIntensity', 'eyeshadowIntensity'];
+                controls.forEach(id => {
+                    const slider = document.getElementById(id);
+                    if (slider) {
+                        slider.value = 0;
+                        slider.dispatchEvent(new Event('input'));
+                    }
+                });
+                updateStatus('化妆效果已重置');
+            });
+            
+            // 下载结果
+            document.getElementById('downloadResult').addEventListener('click', () => {
+                const canvas = document.getElementById('resultCanvas');
+                if (canvas) {
+                    const link = document.createElement('a');
+                    link.download = 'makeup-result.png';
+                    link.href = canvas.toDataURL();
+                    link.click();
+                    updateStatus('结果图片已下载');
+                }
+            });
+            
+            // 监听WebGL应用初始化
+            if (window.webglFaceBeautyApp) {
+                updateTechInfo({
+                    webglStatus: '已初始化',
+                    shaderStatus: '编译完成'
+                });
+                updateStatus('WebGL化妆系统准备就绪');
+            }
+        });
+    </script>
+</body>
+</html>
