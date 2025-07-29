@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebGL美颜测试 - 调试版本</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <h1>WebGL美颜测试 - 调试版本</h1>
+        
+        <div id="loading" style="display: flex; justify-content: center; align-items: center; min-height: 200px;">
+            <div style="text-align: center;">
+                <div style="border: 4px solid #f3f3f3; border-top: 4px solid #3498db; border-radius: 50%; width: 40px; height: 40px; animation: spin 2s linear infinite; margin: 0 auto;"></div>
+                <p>正在初始化...</p>
+            </div>
+        </div>
+        
+        <div id="debug-info" style="background: #f0f0f0; padding: 15px; margin: 20px 0; border-radius: 8px;">
+            <h3>调试信息</h3>
+            <div id="debug-log"></div>
+        </div>
+        
+        <div id="error-info" style="display: none; background: #ffebee; color: #c62828; padding: 15px; margin: 20px 0; border-radius: 8px; border-left: 4px solid #f44336;">
+            <h3>错误信息</h3>
+            <div id="error-log"></div>
+        </div>
+        
+        <input type="file" id="fileInput" accept="image/*" style="margin: 20px 0;">
+        
+        <div id="canvases" style="display: flex; gap: 20px; margin: 20px 0;">
+            <div style="text-align: center;">
+                <h4>原图</h4>
+                <canvas id="originalCanvas" style="border: 1px solid #ccc; max-width: 400px;"></canvas>
+            </div>
+            <div style="text-align: center;">
+                <h4>美颜后</h4>
+                <canvas id="resultCanvas" style="border: 1px solid #ccc; max-width: 400px;"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- MediaPipe依赖 -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+
+    <script>
+        // 重写console.log以在页面上显示
+        const debugLog = document.getElementById('debug-log');
+        const errorLog = document.getElementById('error-log');
+        const errorInfo = document.getElementById('error-info');
+        
+        const originalConsoleLog = console.log;
+        const originalConsoleError = console.error;
+        
+        console.log = function(...args) {
+            originalConsoleLog.apply(console, args);
+            debugLog.innerHTML += '<div>' + args.join(' ') + '</div>';
+            debugLog.scrollTop = debugLog.scrollHeight;
+        };
+        
+        console.error = function(...args) {
+            originalConsoleError.apply(console, args);
+            errorLog.innerHTML += '<div>' + args.join(' ') + '</div>';
+            errorInfo.style.display = 'block';
+            errorLog.scrollTop = errorLog.scrollHeight;
+        };
+        
+        // 捕获全局错误
+        window.addEventListener('error', function(e) {
+            console.error('全局错误:', e.error ? e.error.message : e.message);
+        });
+        
+        // 捕获Promise rejection
+        window.addEventListener('unhandledrejection', function(e) {
+            console.error('未处理的Promise rejection:', e.reason);
+        });
+    </script>
+
+    <!-- 加载我们的主应用 -->
+    <script src="webgl-face-beauty.js"></script>
+
+    <style>
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        #debug-log, #error-log {
+            max-height: 200px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+            line-height: 1.4;
+        }
+        
+        #debug-log div, #error-log div {
+            border-bottom: 1px solid #ddd;
+            padding: 2px 0;
+        }
+    </style>
+</body>
+</html>

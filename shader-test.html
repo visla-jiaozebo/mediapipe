@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shader测试</title>
+</head>
+<body>
+    <h1>Shader加载测试</h1>
+    <div id="result"></div>
+    <canvas id="canvas" width="512" height="512" style="border: 1px solid black;"></canvas>
+
+    <script>
+        async function testShaderLoading() {
+            const resultDiv = document.getElementById('result');
+            
+            try {
+                // 测试shader文件加载
+                console.log('开始测试shader文件加载...');
+                resultDiv.innerHTML += '<p>🔄 正在加载vertex shader...</p>';
+                
+                const vertResponse = await fetch('gl/facebeauty.vert');
+                if (!vertResponse.ok) {
+                    throw new Error('Vertex shader加载失败');
+                }
+                const vertexShaderSource = await vertResponse.text();
+                console.log('Vertex shader加载成功:', vertexShaderSource.length, '个字符');
+                resultDiv.innerHTML += '<p>✅ Vertex shader加载成功</p>';
+                
+                resultDiv.innerHTML += '<p>🔄 正在加载fragment shader...</p>';
+                const fragResponse = await fetch('gl/facebeauty.frag');
+                if (!fragResponse.ok) {
+                    throw new Error('Fragment shader加载失败');
+                }
+                const fragmentShaderSource = await fragResponse.text();
+                console.log('Fragment shader加载成功:', fragmentShaderSource.length, '个字符');
+                resultDiv.innerHTML += '<p>✅ Fragment shader加载成功</p>';
+                
+                // 测试WebGL编译
+                resultDiv.innerHTML += '<p>🔄 正在测试WebGL编译...</p>';
+                const canvas = document.getElementById('canvas');
+                const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+                
+                if (!gl) {
+                    throw new Error('WebGL不支持');
+                }
+                
+                // 编译vertex shader
+                const vertexShader = gl.createShader(gl.VERTEX_SHADER);
+                gl.shaderSource(vertexShader, vertexShaderSource);
+                gl.compileShader(vertexShader);
+                
+                if (!gl.getShaderParameter(vertexShader, gl.COMPILE_STATUS)) {
+                    const error = gl.getShaderInfoLog(vertexShader);
+                    throw new Error('Vertex shader编译失败: ' + error);
+                }
+                console.log('Vertex shader编译成功');
+                resultDiv.innerHTML += '<p>✅ Vertex shader编译成功</p>';
+                
+                // 编译fragment shader
+                const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+                gl.shaderSource(fragmentShader, fragmentShaderSource);
+                gl.compileShader(fragmentShader);
+                
+                if (!gl.getShaderParameter(fragmentShader, gl.COMPILE_STATUS)) {
+                    const error = gl.getShaderInfoLog(fragmentShader);
+                    throw new Error('Fragment shader编译失败: ' + error);
+                }
+                console.log('Fragment shader编译成功');
+                resultDiv.innerHTML += '<p>✅ Fragment shader编译成功</p>';
+                
+                // 链接程序
+                const program = gl.createProgram();
+                gl.attachShader(program, vertexShader);
+                gl.attachShader(program, fragmentShader);
+                gl.linkProgram(program);
+                
+                if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+                    const error = gl.getProgramInfoLog(program);
+                    throw new Error('Shader程序链接失败: ' + error);
+                }
+                console.log('Shader程序链接成功');
+                resultDiv.innerHTML += '<p>✅ Shader程序链接成功</p>';
+                
+                // 检查uniform位置
+                const numUniforms = gl.getProgramParameter(program, gl.ACTIVE_UNIFORMS);
+                console.log('程序包含', numUniforms, '个uniform');
+                resultDiv.innerHTML += `<p>📊 程序包含 ${numUniforms} 个uniform</p>`;
+                
+                for (let i = 0; i < numUniforms; i++) {
+                    const uniformInfo = gl.getActiveUniform(program, i);
+                    const location = gl.getUniformLocation(program, uniformInfo.name);
+                    console.log('- Uniform:', uniformInfo.name, '类型:', uniformInfo.type, '位置:', location);
+                    resultDiv.innerHTML += `<p style="margin-left: 20px;">• ${uniformInfo.name} (类型: ${uniformInfo.type})</p>`;
+                }
+                
+                resultDiv.innerHTML += '<p style="color: green; font-weight: bold;">🎉 所有测试通过！</p>';
+                
+            } catch (error) {
+                console.error('测试失败:', error);
+                resultDiv.innerHTML += `<p style="color: red;">❌ 测试失败: ${error.message}</p>`;
+            }
+        }
+        
+        // 页面加载完成后开始测试
+        document.addEventListener('DOMContentLoaded', testShaderLoading);
+    </script>
+</body>
+</html>

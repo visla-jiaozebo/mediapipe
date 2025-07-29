@@ -5,478 +5,6 @@
  * 功能: GPU shader 实现的瘦脸、大眼、磨皮效果
  */
 
-// 顶点着色器 - 标准的全屏四边形
-const vertexShaderSource = `
-    attribute vec2 a_position;
-    attribute vec2 a_texCoord;
-    varying vec2 v_texCoord;
-    
-    void main() {
-        gl_Position = vec4(a_position, 0.0, 1.0);
-        v_texCoord = a_texCoord;
-    }
-`;
-
-// 人脸变形片段着色器 - 基于 GPUPixel 实现
-const faceReshapeFragmentShaderSource = `
-    precision highp float;
-    
-    varying vec2 v_texCoord;
-    uniform sampler2D u_texture;
-    
-    // 人脸检测参数
-    uniform int u_hasFace;
-    uniform float u_facePointsX[468]; // MediaPipe 468个关键点 X坐标
-    uniform float u_facePointsY[468]; // MediaPipe 468个关键点 Y坐标
-    uniform float u_aspectRatio;
-    
-    // 美颜参数
-    uniform float u_thinFaceDelta;   // 瘦脸强度 [0.0, 1.0]
-    uniform float u_bigEyeDelta;     // 大眼强度 [0.0, 1.0]
-    
-    // 大眼效果函数 - 径向放大
-    vec2 enlargeEye0(vec2 texCoord, vec2 centerPos, float radius, float delta) {
-        if (delta <= 0.0) return texCoord;
-        
-        // 计算距离（考虑宽高比）
-        vec2 adjustedTexCoord = vec2(texCoord.x, texCoord.y * u_aspectRatio);
-        vec2 adjustedCenter = vec2(centerPos.x, centerPos.y * u_aspectRatio);
-        float dist = length(adjustedTexCoord - adjustedCenter);
-        
-        // 如果在影响范围内
-        if (dist < radius && dist > 0.0) {
-            // 使用更强的放大算法
-            float weight = smoothstep(radius, 0.0, dist);
-            float scaleFactor = 1.0 - delta * weight * 0.5; // 增强放大效果
-            
-            vec2 direction = texCoord - centerPos;
-            return centerPos + direction * scaleFactor;
-        }
-        
-        return texCoord;
-    }
-    vec2 enlargeEye(vec2 textureCoord, vec2 originPosition, float radius, float delta) {
-
-        float weight = distance(vec2(textureCoord.x, textureCoord.y / u_aspectRatio), vec2(originPosition.x, originPosition.y / u_aspectRatio)) / radius;
-
-        weight = 1.0 - (1.0 - weight * weight) * delta;
-        weight = clamp(weight,0.0,1.0);
-        textureCoord = originPosition + (textureCoord - originPosition) * weight;
-        return textureCoord;
-    }
-    
-    // 曲线变形函数 - 用于瘦脸
-    vec2 curveWarp(vec2 texCoord, vec2 originPos, vec2 targetPos, float delta) {
-        if (delta <= 0.0) return texCoord;
-        
-        vec2 direction = normalize(targetPos - originPos);
-        float maxDistance = distance(targetPos, originPos);
-        
-        if (maxDistance <= 0.0) return texCoord;
-        
-        // 计算当前点到原始点的距离
-        vec2 adjustedTexCoord = vec2(texCoord.x, texCoord.y / u_aspectRatio);
-        vec2 adjustedOrigin = vec2(originPos.x, originPos.y / u_aspectRatio);
-        float distanceToOrigin = length(adjustedTexCoord - adjustedOrigin);
-        
-        // 影响半径 - 基于目标距离
-        float influenceRadius = maxDistance * 1.5;
-        
-        if (distanceToOrigin < influenceRadius && distanceToOrigin > 0.0) {
-            // 计算变形强度
-            float influence = smoothstep(influenceRadius, 0.0, distanceToOrigin);
-            float warpStrength = delta * influence * 0.3; // 增强变形效果
-            
-            // 计算变形方向
-            vec2 warpDirection = direction * warpStrength * maxDistance;
-            return texCoord - warpDirection;
-        }
-        
-        return texCoord;
-    }
-    
-    // 瘦脸效果 - 使用更准确的MediaPipe关键点
-    vec2 thinFace(vec2 currentCoord) {
-        if (u_hasFace == 0) return currentCoord;
-        
-        // 使用MediaPipe Face Mesh标准的脸部轮廓关键点进行瘦脸
-        // 基于FACEMESH_FACE_OVAL的正确关键点索引
-        // 左脸颊轮廓关键点 (面部椭圆左侧)
-        // vec2 leftCheek1 = vec2(u_facePointsX[162], u_facePointsY[162]);
-        vec2 leftCheek2 = vec2(u_facePointsX[127], u_facePointsY[127]);
-        vec2 leftCheek3 = vec2(u_facePointsX[234], u_facePointsY[234]);
-        vec2 leftCheek4 = vec2(u_facePointsX[93], u_facePointsY[93]);
-        vec2 leftCheek5 = vec2(u_facePointsX[132], u_facePointsY[132]);
-        vec2 leftCheek6 = vec2(u_facePointsX[215], u_facePointsY[215]);
-        vec2 leftCheek7 = vec2(u_facePointsX[58], u_facePointsY[58]);
-        vec2 leftCheek8 = vec2(u_facePointsX[172], u_facePointsY[172]);
-        vec2 leftCheek9 = vec2(u_facePointsX[136], u_facePointsY[136]);
-        vec2 leftCheek10 = vec2(u_facePointsX[150], u_facePointsY[150]);
-        vec2 leftCheek11 = vec2(u_facePointsX[149], u_facePointsY[149]);  // 251 - 右脸颊下部
-        
-        // 右脸颊轮廓关键点 (面部椭圆右侧)
-        // vec2 rightCheek1 = vec2(u_facePointsX[389], u_facePointsY[389]);  // 454 - 右颞区
-        vec2 rightCheek2 = vec2(u_facePointsX[356], u_facePointsY[356]);  // 356 - 右脸颊上部
-        vec2 rightCheek3 = vec2(u_facePointsX[454], u_facePointsY[454]);  // 389 - 右脸颊中部  
-        vec2 rightCheek4 = vec2(u_facePointsX[323], u_facePointsY[323]);  // 251 - 右脸颊下部
-        vec2 rightCheek5 = vec2(u_facePointsX[401], u_facePointsY[401]);  // 251 - 右脸颊下部
-        vec2 rightCheek6 = vec2(u_facePointsX[361], u_facePointsY[361]);  // 251 - 右脸颊下部
-        vec2 rightCheek7 = vec2(u_facePointsX[435], u_facePointsY[435]);  // 251 - 右脸颊下部
-        vec2 rightCheek8 = vec2(u_facePointsX[288], u_facePointsY[288]);  // 251 - 右脸颊下部
-        vec2 rightCheek9 = vec2(u_facePointsX[397], u_facePointsY[397]);  // 251 - 右脸颊下部
-        vec2 rightCheek10 = vec2(u_facePointsX[365], u_facePointsY[365]);  // 251 - 右脸颊下部
-        vec2 rightCheek11 = vec2(u_facePointsX[379], u_facePointsY[379]);  // 251 - 右脸颊下部
-        vec2 rightCheek12 = vec2(u_facePointsX[378], u_facePointsY[378]);  // 251 - 右脸颊下部
-
-        // 面部中心线关键点作为收缩目标
-        vec2 noseTip = vec2(u_facePointsX[6], u_facePointsY[6]);          // 双眼中心
-        vec2 chinCenter = vec2(u_facePointsX[18], u_facePointsY[18]);     // 18 - 下巴中心  
-        vec2 faceCenter = (noseTip + chinCenter) * 0.5;
-        
-        // 左脸向中心收缩 - 使用Face Oval的准确关键点
-        // currentCoord = curveWarp(currentCoord, leftCheek1, faceCenter, u_thinFaceDelta);
-        currentCoord = curveWarp(currentCoord, leftCheek2, faceCenter, u_thinFaceDelta);
-        currentCoord = curveWarp(currentCoord, leftCheek3, faceCenter, u_thinFaceDelta);
-        currentCoord = curveWarp(currentCoord, leftCheek4, faceCenter, u_thinFaceDelta);
-        currentCoord = curveWarp(currentCoord, leftCheek5, faceCenter, u_thinFaceDelta);
-        currentCoord = curveWarp(currentCoord, leftCheek6, faceCenter, u_thinFaceDelta);
-        currentCoord = curveWarp(currentCoord, leftCheek7, faceCenter, u_thinFaceDelta);
-        currentCoord = curveWarp(currentCoord, leftCheek8, faceCenter, u_thinFaceDelta);
-        currentCoord = curveWarp(currentCoord, leftCheek9, faceCenter, u_thinFaceDelta);
-        currentCoord = curveWarp(currentCoord, leftCheek10, faceCenter, u_thinFaceDelta);
-
-        // 右脸向中心收缩 - 使用Face Oval的准确关键点
-        // currentCoord = curveWarp(currentCoord, rightCheek1, faceCenter, u_thinFaceDelta);
-        currentCoord = curveWarp(currentCoord, rightCheek2, faceCenter, u_thinFaceDelta);
-        currentCoord = curveWarp(currentCoord, rightCheek3, faceCenter, u_thinFaceDelta);
-        currentCoord = curveWarp(currentCoord, rightCheek4, faceCenter, u_thinFaceDelta);
-        currentCoord = curveWarp(currentCoord, rightCheek5, faceCenter, u_thinFaceDelta);
-        currentCoord = curveWarp(currentCoord, rightCheek6, faceCenter, u_thinFaceDelta);
-        currentCoord = curveWarp(currentCoord, rightCheek7, faceCenter, u_thinFaceDelta);
-        currentCoord = curveWarp(currentCoord, rightCheek8, faceCenter, u_thinFaceDelta);
-        currentCoord = curveWarp(currentCoord, rightCheek9, faceCenter, u_thinFaceDelta);
-        currentCoord = curveWarp(currentCoord, rightCheek10, faceCenter, u_thinFaceDelta);
-        currentCoord = curveWarp(currentCoord, rightCheek11, faceCenter, u_thinFaceDelta);
-        currentCoord = curveWarp(currentCoord, rightCheek12, faceCenter, u_thinFaceDelta);
-
-        
-        return currentCoord;
-    }
-    
-    // 大眼效果 - 使用更准确的眼部关键点
-    vec2 bigEye(vec2 currentCoord) {
-        if (u_hasFace == 0) return currentCoord;
-        
-        // 左眼关键点 (MediaPipe Face Mesh标准索引)
-        vec2 leftEyeInner = vec2(u_facePointsX[33], u_facePointsY[33]);      // 33
-        vec2 leftEyeOuter = vec2(u_facePointsX[133], u_facePointsY[133]);    // 133
-        vec2 leftEyeTop = vec2(u_facePointsX[159], u_facePointsY[159]);      // 159
-        vec2 leftEyeBottom = vec2(u_facePointsX[145], u_facePointsY[145]);   // 145
-        
-        // 右眼关键点
-        vec2 rightEyeInner = vec2(u_facePointsX[362], u_facePointsY[362]);   // 362
-        vec2 rightEyeOuter = vec2(u_facePointsX[263], u_facePointsY[263]);   // 263
-        vec2 rightEyeTop = vec2(u_facePointsX[386], u_facePointsY[386]);     // 386
-        vec2 rightEyeBottom = vec2(u_facePointsX[374], u_facePointsY[374]);  // 374
-        
-        // 计算眼部中心
-        vec2 leftEyeCenter = (leftEyeInner + leftEyeOuter + leftEyeTop + leftEyeBottom) / 4.0;
-        vec2 rightEyeCenter = (rightEyeInner + rightEyeOuter + rightEyeTop + rightEyeBottom) / 4.0;
-        
-        // 计算眼部半径
-        float leftEyeRadius = max(
-            distance(leftEyeInner, leftEyeOuter), 
-            distance(leftEyeTop, leftEyeBottom)
-        ) * 0.6;
-        
-        float rightEyeRadius = max(
-            distance(rightEyeInner, rightEyeOuter),
-            distance(rightEyeTop, rightEyeBottom)
-        ) * 0.6;
-        
-        // 应用大眼效果
-        currentCoord = enlargeEye(currentCoord, leftEyeCenter, leftEyeRadius, u_bigEyeDelta);
-        currentCoord = enlargeEye(currentCoord, rightEyeCenter, rightEyeRadius, u_bigEyeDelta);
-        
-        return currentCoord;
-    }
-    
-    // 绘制区域边框函数
-    float drawBorder(vec2 uv, vec2 center, float radius, float thickness) {
-        float dist = length(uv - center);
-        return smoothstep(radius - thickness, radius, dist) - smoothstep(radius, radius + thickness, dist);
-    }
-    
-    // 绘制矩形边框
-    float drawRectBorder(vec2 uv, vec2 topLeft, vec2 bottomRight, float thickness) {
-        vec2 d = max(vec2(0.0), max(topLeft - uv, uv - bottomRight));
-        float border = length(d);
-        
-        // 内边框
-        vec2 innerTopLeft = topLeft + vec2(thickness);
-        vec2 innerBottomRight = bottomRight - vec2(thickness);
-        vec2 innerD = max(vec2(0.0), max(innerTopLeft - uv, uv - innerBottomRight));
-        float innerBorder = length(innerD);
-        
-        return step(border, 0.0) - step(innerBorder, 0.0);
-    }
-
-    void main0() {
-            vec2 texCoord = v_texCoord;
-            vec4 color = texture2D(u_texture, texCoord);
-
-                vec2 leftEyeInner = vec2(u_facePointsX[33], u_facePointsY[33]);    // 33
-                vec2 leftEyeOuter = vec2(u_facePointsX[133], u_facePointsY[133]);  // 133
-                vec2 leftEyeTop = vec2(u_facePointsX[160], u_facePointsY[160]);    // 160
-                vec2 leftEyeBottom = vec2(u_facePointsX[144], u_facePointsY[144]); // 144
-
-                vec2 leftEyeCenter = (leftEyeInner + leftEyeOuter + leftEyeTop + leftEyeBottom) / 4.0;
-
-                if (distance(texCoord, leftEyeInner) < 0.02) {
-                    color = vec4(1.0, 0.0, 0.0, 1.0); // 红色边框
-                }
-                if (distance(texCoord, leftEyeTop) < 0.02) {
-                    color = vec4(1.0, 0.0, 0.0, 1.0); // 红色边框
-                }
-
-
-            gl_FragColor = color;
-                
-    }
-    
-    void main() {
-        vec2 texCoord = v_texCoord;
-        
-        
-        // 应用人脸变形效果
-        if (u_hasFace == 1) {
-            texCoord = thinFace(texCoord);
-            texCoord = bigEye(texCoord);
-        }
-        
-        // 确保纹理坐标在有效范围内
-        texCoord = clamp(texCoord, 0.0, 1.0);
-        // gl_FragColor = mix(texture2D(u_texture, texCoord), color, 0.3); // 混合原图和标记
-        gl_FragColor = texture2D(u_texture, texCoord);
-    }
-`;
-
-// 磨皮片段着色器
-const skinSmoothingFragmentShaderSource = `
-    precision highp float;
-    
-    varying vec2 v_texCoord;
-    uniform sampler2D u_texture;
-    uniform vec2 u_textureSize;
-    uniform float u_smoothingLevel; // [0.0, 1.0]
-    
-    // 高质量双边滤波磨皮
-    vec4 bilateralFilter(sampler2D tex, vec2 uv, vec2 texelSize) {
-        vec4 center = texture2D(tex, uv);
-        vec4 result = center;
-        float totalWeight = 1.0;
-        
-        // 3x3核心采样
-        for(int x = -1; x <= 1; x++) {
-            for(int y = -1; y <= 1; y++) {
-                if(x == 0 && y == 0) continue;
-                
-                vec2 offset = vec2(float(x), float(y)) * texelSize;
-                vec4 sample = texture2D(tex, uv + offset);
-                
-                // 空间权重
-                float spatialWeight = exp(-0.5 * (float(x*x + y*y)));
-                
-                // 颜色相似度权重
-                float colorDiff = length(sample.rgb - center.rgb);
-                float colorWeight = exp(-colorDiff * colorDiff * 25.0);
-                
-                float weight = spatialWeight * colorWeight;
-                result += sample * weight;
-                totalWeight += weight;
-            }
-        }
-        
-        return result / totalWeight;
-    }
-    
-    void main() {
-        vec2 texelSize = 1.0 / u_textureSize;
-        vec4 original = texture2D(u_texture, v_texCoord);
-        vec4 smoothed = bilateralFilter(u_texture, v_texCoord, texelSize);
-        
-        // 混合原图和磨皮结果
-        gl_FragColor = mix(original, smoothed, u_smoothingLevel);
-    }
-`;
-
-// 化妆效果着色器 - 基于 GPUPixel face_makeup_filter.cc 实现
-const faceMakeupVertexShaderSource = `
-    attribute vec2 a_position;
-    attribute vec2 a_texCoord;
-    attribute vec2 a_landmarkCoord;  // 人脸关键点坐标
-    
-    varying vec2 v_texCoord;         // 原图纹理坐标
-    varying vec2 v_landmarkCoord;    // 关键点纹理坐标
-    
-    void main() {
-        gl_Position = vec4(a_position, 0.0, 1.0);
-        v_texCoord = a_texCoord;
-        v_landmarkCoord = a_landmarkCoord;
-    }
-`;
-
-const faceMakeupFragmentShaderSource = `
-    precision highp float;
-    
-    varying vec2 v_texCoord;
-    varying vec2 v_landmarkCoord;
-    
-    uniform sampler2D u_inputTexture;        // 原图
-    uniform sampler2D u_makeupTexture;       // 化妆纹理 (口红/腮红/眼影等)
-    uniform float u_intensity;              // 化妆强度 [0.0, 1.0]
-    uniform int u_blendMode;                 // 混合模式
-    uniform int u_hasFace;                   // 是否检测到人脸
-    
-    // 强光混合
-    float blendHardLight(float base, float blend) {
-        return blend < 0.5 ? (2.0 * base * blend) : (1.0 - 2.0 * (1.0 - base) * (1.0 - blend));
-    }
-    
-    vec3 blendHardLight(vec3 base, vec3 blend) {
-        return vec3(blendHardLight(base.r, blend.r),
-                    blendHardLight(base.g, blend.g),
-                    blendHardLight(base.b, blend.b));
-    }
-    
-    // 柔光混合
-    float blendSoftLight(float base, float blend) {
-        return (blend < 0.5) ? (base + (2.0 * blend - 1.0) * (base - base * base))
-                             : (base + (2.0 * blend - 1.0) * (sqrt(base) - base));
-    }
-    
-    vec3 blendSoftLight(vec3 base, vec3 blend) {
-        return vec3(blendSoftLight(base.r, blend.r),
-                    blendSoftLight(base.g, blend.g),
-                    blendSoftLight(base.b, blend.b));
-    }
-    
-    // 正片叠底
-    vec3 blendMultiply(vec3 base, vec3 blend) {
-        return base * blend;
-    }
-    
-    // 叠加混合
-    float blendOverlay(float base, float blend) {
-        return base < 0.5 ? (2.0 * base * blend) : (1.0 - 2.0 * (1.0 - base) * (1.0 - blend));
-    }
-    
-    vec3 blendOverlay(vec3 base, vec3 blend) {
-        return vec3(blendOverlay(base.r, blend.r), 
-                    blendOverlay(base.g, blend.g),
-                    blendOverlay(base.b, blend.b));
-    }
-    
-    // 混合函数选择器
-    vec3 blendFunc(vec3 base, vec3 blend, int blendMode) {
-        if (blendMode == 0) {
-            return blend;                    // 正常混合
-        } else if (blendMode == 15) {
-            return blendMultiply(base, blend);  // 正片叠底
-        } else if (blendMode == 17) {
-            return blendOverlay(base, blend);   // 叠加
-        } else if (blendMode == 22) {
-            return blendHardLight(base, blend); // 强光
-        } else if (blendMode == 23) {
-            return blendSoftLight(base, blend); // 柔光
-        }
-        return blend;
-    }
-    
-    void main() {
-        if (u_hasFace == 0) {
-            gl_FragColor = texture2D(u_inputTexture, v_texCoord);
-            return;
-        }
-        
-        // 获取原图颜色
-        vec4 bgColor = texture2D(u_inputTexture, v_texCoord);
-        
-        // 获取化妆纹理颜色 (使用关键点映射的纹理坐标)
-        vec4 fgColor = texture2D(u_makeupTexture, v_landmarkCoord);
-        
-        // 应用强度
-        fgColor = fgColor * u_intensity;
-        
-        // 如果化妆纹理透明度为0，直接返回原图
-        if (fgColor.a == 0.0) {
-            gl_FragColor = bgColor;
-            return;
-        }
-        
-        // 执行混合
-        vec3 blendedColor = blendFunc(bgColor.rgb, 
-                                     clamp(fgColor.rgb * (1.0 / fgColor.a), 0.0, 1.0), 
-                                     u_blendMode);
-        
-        // 最终颜色混合
-        gl_FragColor = vec4(bgColor.rgb * (1.0 - fgColor.a) + blendedColor.rgb * fgColor.a, 1.0);
-    }
-`;
-
-// 美白调色片段着色器
-const colorAdjustmentFragmentShaderSource = `
-    precision highp float;
-    
-    varying vec2 v_texCoord;
-    uniform sampler2D u_texture;
-    uniform float u_brightness;  // 美白强度 [-1.0, 1.0]
-    uniform float u_contrast;    // 对比度 [-1.0, 1.0]
-    uniform float u_saturation;  // 饱和度 [-1.0, 1.0]
-    uniform float u_warmth;      // 暖色调 [-1.0, 1.0]
-    
-    vec3 rgb2hsv(vec3 c) {
-        vec4 K = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
-        vec4 p = mix(vec4(c.bg, K.wz), vec4(c.gb, K.xy), step(c.b, c.g));
-        vec4 q = mix(vec4(p.xyw, c.r), vec4(c.r, p.yzx), step(p.x, c.r));
-        
-        float d = q.x - min(q.w, q.y);
-        float e = 1.0e-10;
-        return vec3(abs(q.z + (q.w - q.y) / (6.0 * d + e)), d / (q.x + e), q.x);
-    }
-    
-    vec3 hsv2rgb(vec3 c) {
-        vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
-        vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
-        return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
-    }
-    
-    void main() {
-        vec4 color = texture2D(u_texture, v_texCoord);
-#if 0
-        {
-            // 亮度调整 (美白)
-            color.rgb += u_brightness * 0.3;
-            
-            // 对比度调整
-            color.rgb = (color.rgb - 0.5) * (1.0 + u_contrast) + 0.5;
-            
-            // 饱和度调整
-            vec3 hsv = rgb2hsv(color.rgb);
-            hsv.y *= (1.0 + u_saturation);
-            color.rgb = hsv2rgb(hsv);
-            
-            // 暖色调调整
-            color.r += u_warmth * 0.1;
-            color.g += u_warmth * 0.05;
-            
-            // 确保颜色在有效范围内
-            color.rgb = clamp(color.rgb, 0.0, 1.0);
-        }
-#endif
-        gl_FragColor = color;
-    }
-`;
 
 class WebGLFaceBeautyApp {
     constructor() {
@@ -532,17 +60,22 @@ class WebGLFaceBeautyApp {
         this.setupEventListeners();
         
         try {
+            console.log('开始初始化WebGL...');
             await this.initializeWebGL();
+            console.log('WebGL初始化完成，开始初始化MediaPipe...');
             await this.initializeMediaPipe();
+            console.log('MediaPipe初始化完成，检查就绪状态...');
             this.checkReadyState();
+            console.log('应用初始化完成');
         } catch (error) {
             console.error('初始化失败:', error);
-            this.showError('系统初始化失败，请刷新页面重试');
+            this.showError('系统初始化失败，请刷新页面重试: ' + error.message);
             this.showLoading(false);
         }
     }
     
     async initializeWebGL() {
+        console.log('开始创建WebGL上下文...');
         // 创建隐藏的WebGL画布
         const canvas = document.createElement('canvas');
         canvas.width = 512;
@@ -554,17 +87,38 @@ class WebGLFaceBeautyApp {
         if (!this.gl) {
             throw new Error('WebGL不支持');
         }
+        console.log('WebGL上下文创建成功');
         
-        // 编译着色器程序
-        this.programs.faceReshape = this.createShaderProgram(vertexShaderSource, faceReshapeFragmentShaderSource);
-        this.programs.skinSmoothing = this.createShaderProgram(vertexShaderSource, skinSmoothingFragmentShaderSource);
-        this.programs.colorAdjustment = this.createShaderProgram(vertexShaderSource, colorAdjustmentFragmentShaderSource);
-        this.programs.faceMakeup = this.createShaderProgram(faceMakeupVertexShaderSource, faceMakeupFragmentShaderSource);
+        // 加载外部shader文件
+        console.log('开始加载shader文件...');
+        const vertexShaderSource = await this.loadShaderFile('gl/facebeauty.vert');
+        console.log('Vertex shader加载成功，长度:', vertexShaderSource.length);
+        const fragmentShaderSource = await this.loadShaderFile('gl/facebeauty.frag');
+        console.log('Fragment shader加载成功，长度:', fragmentShaderSource.length);
+        
+        // 编译统一的着色器程序
+        console.log('开始编译着色器程序...');
+        this.programs.faceBeauty = this.createShaderProgram(vertexShaderSource, fragmentShaderSource);
+        console.log('着色器程序编译成功');
         
         // 设置几何体（全屏四边形）
+        console.log('设置几何体...');
         this.setupGeometry();
         
         console.log('WebGL初始化完成');
+    }
+    
+    async loadShaderFile(url) {
+        try {
+            const response = await fetch(url);
+            if (!response.ok) {
+                throw new Error(`加载shader文件失败: ${url}`);
+            }
+            return await response.text();
+        } catch (error) {
+            console.error('加载shader文件错误:', error);
+            throw error;
+        }
     }
     
     createShaderProgram(vertexSource, fragmentSource) {
@@ -609,9 +163,9 @@ class WebGLFaceBeautyApp {
         // 获取属性和uniform位置
         const programInfo = {
             program: program,
-            attribLocations: {
-                position: gl.getAttribLocation(program, 'a_position'),
-                texCoord: gl.getAttribLocation(program, 'a_texCoord'),
+            attributeLocations: {
+                'a_position': gl.getAttribLocation(program, 'a_position'),
+                'a_texCoord': gl.getAttribLocation(program, 'a_texCoord'),
             },
             uniformLocations: {}
         };
@@ -705,11 +259,18 @@ class WebGLFaceBeautyApp {
     }
     
     checkReadyState() {
+        console.log('检查就绪状态...');
+        console.log('- WebGL:', this.gl ? '✅' : '❌');
+        console.log('- MediaPipe:', this.isMediaPipeReady ? '✅' : '❌');
+        
         if (this.gl && this.isMediaPipeReady) {
             this.showLoading(false);
             this.showSuccess('🎉 GPU美颜系统初始化完成！正在加载示例图片...');
+            console.log('系统就绪，开始加载示例图片');
             // 自动加载 demo.png
             this.loadDemoImage();
+        } else {
+            console.log('系统未就绪，等待初始化完成...');
         }
     }
     
@@ -1166,36 +727,124 @@ class WebGLFaceBeautyApp {
     
     // 获取人脸化妆区域的三角形索引 - 基于GPUPixel实现
     getFaceMakeupIndices() {
-        // 参考face_makeup_filter.cc中的GetFaceIndexs()
+        // 基于MediaPipe Face Mesh的化妆区域三角化索引
+        // 参考 MediaPipe FACEMESH_LIPS, FACEMESH_LEFT_EYE, FACEMESH_RIGHT_EYE 等
+        
+        // 嘴唇区域三角化 - 基于FACEMESH_LIPS landmarks
+        const lipIndices = [
+            // 上唇外轮廓三角形
+            61, 84, 17,    17, 314, 405,   405, 320, 375,   375, 321, 308,
+            308, 324, 318, 318, 402, 317,  317, 14, 87,     87, 178, 88,
+            88, 95, 78,    78, 191, 80,    80, 81, 82,      82, 13, 312,
+            312, 311, 310, 310, 415, 308,
+            
+            // 下唇外轮廓三角形  
+            61, 146, 91,   91, 181, 84,    84, 17, 314,     314, 405, 321,
+            321, 375, 291, 291, 303, 267,  267, 269, 270,   270, 409, 415,
+            415, 310, 311, 311, 312, 13,   13, 82, 81,      81, 80, 78,
+            78, 95, 88,    88, 178, 87,    87, 14, 317,     317, 402, 318,
+            
+            // 内唇区域三角形
+            78, 191, 80,   80, 81, 82,     82, 13, 312,     312, 311, 310,
+            310, 415, 308, 61, 185, 40,    40, 39, 37,      37, 0, 267,
+            267, 269, 270, 270, 409, 291
+        ];
+        
+        // 左眼区域三角化 - 基于FACEMESH_LEFT_EYE landmarks  
+        const leftEyeIndices = [
+            263, 249, 390, 390, 373, 374,  374, 380, 381,   381, 382, 362,
+            263, 466, 388, 388, 387, 386,  386, 385, 384,   384, 398, 362
+        ];
+        
+        // 右眼区域三角化 - 基于FACEMESH_RIGHT_EYE landmarks
+        const rightEyeIndices = [
+            33, 7, 163,    163, 144, 145,  145, 153, 154,   154, 155, 133,
+            33, 246, 161,  161, 160, 159,  159, 158, 157,   157, 173, 133
+        ];
+        
+        // 左脸颊区域 - 基于FACEMESH_FACE_OVAL选取的脸颊部分
+        const leftCheekIndices = [
+            234, 127, 162, 162, 21, 54,    54, 103, 67,     67, 109, 10,
+            127, 234, 93,  93, 132, 58,    58, 172, 136,    136, 150, 149
+        ];
+        
+        // 右脸颊区域 - 基于FACEMESH_FACE_OVAL选取的脸颊部分  
+        const rightCheekIndices = [
+            454, 356, 389, 389, 251, 284,  284, 332, 297,   297, 338, 10,
+            356, 454, 323, 323, 361, 288,  288, 397, 365,   365, 379, 378
+        ];
+        
+        // 合并所有区域的索引
         return new Uint32Array([
-            // 嘴唇区域 - 上唇部分 (10个三角形)
-            84, 85, 96, 96, 85, 97, 97, 85, 86, 86, 97, 98, 86, 98, 87, 87, 98, 88,
-            88, 98, 99, 88, 99, 89, 89, 99, 100, 89, 100, 90,
-            // 下唇部分 (10个三角形)  
-            90, 100, 91, 100, 91, 101, 101, 91, 92, 101, 92, 102, 102, 92, 93, 102,
-            93, 94, 102, 94, 103, 103, 94, 95, 103, 95, 96, 96, 95, 84,
-            // 唇间部分 (8个三角形)
-            96, 97, 103, 97, 103, 106, 97, 106, 98, 106, 103, 102, 106, 102, 101, 106,
-            101, 99, 106, 98, 99, 99, 101, 100
+            ...lipIndices,
+            ...leftEyeIndices, 
+            ...rightEyeIndices,
+            ...leftCheekIndices,
+            ...rightCheekIndices
         ]);
     }
     
-    // 获取人脸化妆纹理坐标 - 基于GPUPixel实现  
+    // 获取人脸化妆纹理坐标 - 基于MediaPipe Face Mesh landmarks
     getFaceMakeupTextureCoords() {
-        // 参考face_makeup_filter.cc中的FaceTextureCoordinates()
-        // 这些坐标定义了化妆纹理在人脸上的映射位置
+        // 基于MediaPipe 468个关键点的化妆纹理坐标映射
+        // 这些坐标定义了化妆纹理在人脸各个区域的映射位置
+        
+        // 嘴唇区域纹理坐标 (对应FACEMESH_LIPS区域)
+        const lipCoords = [
+            // 上唇轮廓对应的纹理坐标
+            0.3, 0.4, 0.32, 0.38, 0.34, 0.36, 0.36, 0.35, 0.38, 0.34,
+            0.4, 0.33, 0.42, 0.32, 0.44, 0.31, 0.46, 0.3, 0.48, 0.29,
+            0.5, 0.28, 0.52, 0.29, 0.54, 0.3, 0.56, 0.31, 0.58, 0.32,
+            0.6, 0.33, 0.62, 0.34, 0.64, 0.35, 0.66, 0.36, 0.68, 0.38,
+            0.7, 0.4,
+            
+            // 下唇轮廓对应的纹理坐标
+            0.3, 0.6, 0.32, 0.62, 0.34, 0.64, 0.36, 0.65, 0.38, 0.66,
+            0.4, 0.67, 0.42, 0.68, 0.44, 0.69, 0.46, 0.7, 0.48, 0.71,
+            0.5, 0.72, 0.52, 0.71, 0.54, 0.7, 0.56, 0.69, 0.58, 0.68,
+            0.6, 0.67, 0.62, 0.66, 0.64, 0.65, 0.66, 0.64, 0.68, 0.62,
+            0.7, 0.6
+        ];
+        
+        // 左眼区域纹理坐标 (对应FACEMESH_LEFT_EYE区域)  
+        const leftEyeCoords = [
+            0.2, 0.25, 0.22, 0.24, 0.24, 0.23, 0.26, 0.22, 0.28, 0.21,
+            0.3, 0.2, 0.32, 0.21, 0.34, 0.22, 0.36, 0.23, 0.38, 0.24,
+            0.4, 0.25, 0.38, 0.26, 0.36, 0.27, 0.34, 0.28, 0.32, 0.29,
+            0.3, 0.3, 0.28, 0.29, 0.26, 0.28, 0.24, 0.27, 0.22, 0.26
+        ];
+        
+        // 右眼区域纹理坐标 (对应FACEMESH_RIGHT_EYE区域)
+        const rightEyeCoords = [
+            0.6, 0.25, 0.62, 0.24, 0.64, 0.23, 0.66, 0.22, 0.68, 0.21,
+            0.7, 0.2, 0.72, 0.21, 0.74, 0.22, 0.76, 0.23, 0.78, 0.24,
+            0.8, 0.25, 0.78, 0.26, 0.76, 0.27, 0.74, 0.28, 0.72, 0.29,
+            0.7, 0.3, 0.68, 0.29, 0.66, 0.28, 0.64, 0.27, 0.62, 0.26
+        ];
+        
+        // 左脸颊区域纹理坐标
+        const leftCheekCoords = [
+            0.15, 0.4, 0.18, 0.42, 0.21, 0.44, 0.24, 0.46, 0.27, 0.48,
+            0.3, 0.5, 0.27, 0.52, 0.24, 0.54, 0.21, 0.56, 0.18, 0.58,
+            0.15, 0.6, 0.12, 0.58, 0.09, 0.56, 0.06, 0.54, 0.03, 0.52,
+            0.0, 0.5, 0.03, 0.48, 0.06, 0.46, 0.09, 0.44, 0.12, 0.42
+        ];
+        
+        // 右脸颊区域纹理坐标
+        const rightCheekCoords = [
+            0.85, 0.4, 0.82, 0.42, 0.79, 0.44, 0.76, 0.46, 0.73, 0.48,
+            0.7, 0.5, 0.73, 0.52, 0.76, 0.54, 0.79, 0.56, 0.82, 0.58,
+            0.85, 0.6, 0.88, 0.58, 0.91, 0.56, 0.94, 0.54, 0.97, 0.52,
+            1.0, 0.5, 0.97, 0.48, 0.94, 0.46, 0.91, 0.44, 0.88, 0.42
+        ];
+        
+        // 合并所有区域的纹理坐标
         return new Float32Array([
-            0.302451, 0.384169, 0.302986, 0.409377, 0.304336, 0.434977, 0.306984,
-            0.460683, 0.311010, 0.486447, 0.316537, 0.511947, 0.323069, 0.536942,
-            0.331312, 0.561627, 0.342011, 0.585088, 0.355477, 0.607217, 0.371142,
-            0.627774, 0.388459, 0.646991, 0.407041, 0.665229, 0.426325, 0.682694,
-            0.447468, 0.697492, 0.471782, 0.707060, 0.500000, 0.709867, 0.528218,
-            0.707060, 0.552532, 0.697492, 0.573675, 0.682694, 0.592959, 0.665229,
-            0.611541, 0.646991, 0.628858, 0.627774, 0.644523, 0.607217, 0.657989,
-            0.585088, 0.668688, 0.561627, 0.676931, 0.536942, 0.683463, 0.511947,
-            0.688990, 0.486447, 0.693016, 0.460683, 0.695664, 0.434977, 0.697014,
-            0.409377, 0.697549, 0.384169, 0.500000, 0.608028, 0.389259, 0.336870, 0.610740,
-            0.336870, 0.386071, 0.503558, 0.613928, 0.503558
+            ...lipCoords,
+            ...leftEyeCoords,
+            ...rightEyeCoords, 
+            ...leftCheekCoords,
+            ...rightCheekCoords
         ]);
     }
     
@@ -1307,36 +956,108 @@ class WebGLFaceBeautyApp {
         return texture;
     }
     
-    // 渲染化妆效果
-    renderFaceMakeup(inputTexture, landmarks, makeupType = 'lipstick') {
-        if (!this.makeupTextures[makeupType]) {
-            console.warn(`化妆纹理 ${makeupType} 未加载`);
+    // 渲染化妆效果 - 基于GPUPixel face_makeup_filter.cc实现
+    renderFaceMakeup(inputTexture, landmarks, makeupType = 'all') {
+        if (!this.faceLandmarks.length || !landmarks) {
+            console.warn('No face landmarks available for makeup rendering');
             return;
         }
-        
+
         const gl = this.gl;
         const program = this.programs.faceMakeup;
-        
+
         gl.useProgram(program.program);
-        
-        // 设置输入纹理
+
+        // 设置基础图像纹理
         gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(gl.TEXTURE_2D, inputTexture);
-        gl.uniform1i(program.uniformLocations['u_inputTexture'], 0);
-        
+        gl.uniform1i(program.uniformLocations['u_image'], 0);
+
+        // 获取面部三角网格索引和纹理坐标 (基于GPUPixel实现)
+        const faceIndices = this.getFaceMakeupIndices();
+        const faceTexCoords = this.getFaceMakeupTextureCoords();
+
+        // 转换MediaPipe landmarks到GPUPixel格式 (归一化到[-1,1])
+        const faceLandmarks = this.convertLandmarksToGPUPixelFormat(landmarks);
+
+        // 设置面部关键点作为顶点位置属性
+        if (!this.faceMakeupVertexBuffer) {
+            this.faceMakeupVertexBuffer = gl.createBuffer();
+        }
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.faceMakeupVertexBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(faceLandmarks), gl.DYNAMIC_DRAW);
+
+        // 设置纹理坐标属性
+        if (!this.faceMakeupTexCoordBuffer) {
+            this.faceMakeupTexCoordBuffer = gl.createBuffer();
+        }
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.faceMakeupTexCoordBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, faceTexCoords, gl.STATIC_DRAW);
+
+        // 设置索引缓冲区
+        if (!this.faceMakeupIndexBuffer) {
+            this.faceMakeupIndexBuffer = gl.createBuffer();
+        }
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.faceMakeupIndexBuffer);
+        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, faceIndices, gl.STATIC_DRAW);
+
+        // 根据化妆类型渲染不同效果
+        this.renderMakeupType('lipstick', program, faceLandmarks.length / 2, faceIndices.length);
+        this.renderMakeupType('eyeshadow', program, faceLandmarks.length / 2, faceIndices.length);
+        this.renderMakeupType('blush', program, faceLandmarks.length / 2, faceIndices.length);
+    }
+
+    // 渲染特定化妆类型
+    renderMakeupType(makeupType, program, vertexCount, indexCount) {
+        const gl = this.gl;
+        const params = this.makeupParams;
+
+        // 检查是否需要渲染此类型
+        const intensity = params[makeupType + 'Intensity'];
+        if (intensity <= 0 || !this.makeupTextures[makeupType]) {
+            return;
+        }
+
+        console.log(`渲染${makeupType}化妆效果，强度: ${intensity}`);
+
         // 设置化妆纹理
         gl.activeTexture(gl.TEXTURE1);
         gl.bindTexture(gl.TEXTURE_2D, this.makeupTextures[makeupType]);
         gl.uniform1i(program.uniformLocations['u_makeupTexture'], 1);
-        
-        // 设置参数
-        gl.uniform1i(program.uniformLocations['u_hasFace'], this.faceLandmarks.length > 0 ? 1 : 0);
-        gl.uniform1f(program.uniformLocations['u_intensity'], this.makeupParams[makeupType + 'Intensity']);
-        gl.uniform1i(program.uniformLocations['u_blendMode'], this.makeupParams[makeupType + 'BlendMode']);
-        
-        // 使用全屏四边形渲染 (简化版本)
-        this.setupVertexAttributes(program);
-        gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0);
+
+        // 设置uniform参数
+        gl.uniform1f(program.uniformLocations['u_intensity'], intensity);
+        gl.uniform1i(program.uniformLocations['u_blendMode'], params[makeupType + 'BlendMode']);
+
+        // 设置顶点属性 - 位置 (face landmarks)
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.faceMakeupVertexBuffer);
+        gl.enableVertexAttribArray(program.attributeLocations['a_position']);
+        gl.vertexAttribPointer(program.attributeLocations['a_position'], 2, gl.FLOAT, false, 0, 0);
+
+        // 设置顶点属性 - 纹理坐标
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.faceMakeupTexCoordBuffer);
+        gl.enableVertexAttribArray(program.attributeLocations['a_texCoord']);
+        gl.vertexAttribPointer(program.attributeLocations['a_texCoord'], 2, gl.FLOAT, false, 0, 0);
+
+        // 使用索引绘制三角网格
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.faceMakeupIndexBuffer);
+        gl.drawElements(gl.TRIANGLES, indexCount, gl.UNSIGNED_INT, 0);
+
+        // 清理
+        gl.disableVertexAttribArray(program.attributeLocations['a_position']);
+        gl.disableVertexAttribArray(program.attributeLocations['a_texCoord']);
+    }
+
+    // 转换MediaPipe landmarks到GPUPixel格式
+    convertLandmarksToGPUPixelFormat(landmarks) {
+        // GPUPixel使用[-1,1]坐标系，MediaPipe使用[0,1]坐标系
+        const converted = [];
+        for (let i = 0; i < landmarks.length; i++) {
+            // 转换到[-1,1]坐标系 (GPUPixel格式)
+            converted.push(2.0 * landmarks[i].x - 1.0); // x坐标
+            converted.push(2.0 * landmarks[i].y - 1.0); // y坐标
+        }
+        return converted;
     }
     
     applyWebGLBeautyEffects() {
@@ -1360,37 +1081,21 @@ class WebGLFaceBeautyApp {
             
             // 创建输入纹理
             const inputTexture = this.createTextureFromCanvas(this.originalCanvas);
-            const tempTexture1 = this.createEmptyTexture(canvas.width, canvas.height);
-            const tempTexture2 = this.createEmptyTexture(canvas.width, canvas.height);
             
-            // 创建帧缓冲区
-            const framebuffer1 = this.createFramebuffer(tempTexture1);
-            const framebuffer2 = this.createFramebuffer(tempTexture2);
+            // 转换关键点到纹理坐标
+            const landmarks = this.convertLandmarksToTextureCoords(this.faceLandmarks[0]);
             
-        // 转换关键点到纹理坐标
-        const landmarks = this.convertLandmarksToTextureCoords(this.faceLandmarks[0]);
-        
-        // 第一步：人脸变形 (瘦脸 + 大眼)
-        gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer1);
-        this.renderFaceReshape(inputTexture, landmarks);
-        
-        // 第二步：磨皮
-        gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer2);
-        this.renderSkinSmoothing(tempTexture1);
-        
-        // 第三步：颜色调整 (美白、对比度等) - 渲染到屏幕
-        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-        this.renderColorAdjustment(tempTexture2);
-        
-        // 复制结果到显示画布
-        this.copyToResultCanvas();
-        
-        // 清理资源
-        gl.deleteTexture(inputTexture);
-        gl.deleteTexture(tempTexture1);
-        gl.deleteTexture(tempTexture2);
-        gl.deleteFramebuffer(framebuffer1);
-        gl.deleteFramebuffer(framebuffer2);            console.log('GPU美颜处理完成');
+            // 使用统一的美颜shader一次性渲染所有效果
+            gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+            this.renderUnifiedBeautyEffects(inputTexture, landmarks);
+            
+            // 复制结果到显示画布
+            this.copyToResultCanvas();
+            
+            // 清理资源
+            gl.deleteTexture(inputTexture);
+            
+            console.log('GPU美颜处理完成');
             
         } catch (error) {
             console.error('GPU美颜处理失败:', error);
@@ -1449,6 +1154,84 @@ class WebGLFaceBeautyApp {
             y: point.y,  // 保持原始Y坐标，不翻转
             z: point.z || 0
         }));
+    }
+    
+    renderUnifiedBeautyEffects(inputTexture, landmarks) {
+        const gl = this.gl;
+        const program = this.programs.faceBeauty;
+        
+        console.log('=== 开始统一美颜渲染 ===');
+        
+        gl.useProgram(program.program);
+        
+        // 设置顶点属性
+        this.setupVertexAttributes(program);
+        
+        // 绑定纹理
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, inputTexture);
+        
+        // 安全设置uniform - 检查是否存在再设置
+        const safeSetUniform = (name, setter) => {
+            const location = program.uniformLocations[name];
+            if (location !== null && location !== undefined) {
+                setter(location);
+            } else {
+                console.warn(`Uniform ${name} 不存在或无法获取位置`);
+            }
+        };
+        
+        // 设置纹理uniform
+        safeSetUniform('u_texture', (loc) => gl.uniform1i(loc, 0));
+        
+        // 设置人脸检测参数
+        safeSetUniform('u_hasFace', (loc) => gl.uniform1i(loc, 1));
+        const aspectRatio = this.originalCanvas.width / this.originalCanvas.height;
+        safeSetUniform('u_aspectRatio', (loc) => gl.uniform1f(loc, aspectRatio));
+        
+        // 传递关键点数据
+        const facePointsX = new Float32Array(468);
+        const facePointsY = new Float32Array(468);
+        for (let i = 0; i < Math.min(landmarks.length, 468); i++) {
+            facePointsX[i] = landmarks[i].x;
+            facePointsY[i] = landmarks[i].y;
+        }
+        
+        // 传递关键点数组
+        safeSetUniform('u_facePointsX', (loc) => gl.uniform1fv(loc, facePointsX));
+        safeSetUniform('u_facePointsY', (loc) => gl.uniform1fv(loc, facePointsY));
+        
+        // 设置美颜参数
+        safeSetUniform('u_thinFaceDelta', (loc) => gl.uniform1f(loc, this.beautyParams.faceSlim));
+        safeSetUniform('u_bigEyeDelta', (loc) => gl.uniform1f(loc, this.beautyParams.eyeEnlarge));
+        
+        // 设置磨皮参数
+        safeSetUniform('u_textureSize', (loc) => 
+            gl.uniform2f(loc, this.originalCanvas.width, this.originalCanvas.height));
+        safeSetUniform('u_smoothingLevel', (loc) => gl.uniform1f(loc, this.beautyParams.skinSmoothing));
+        
+        // 设置颜色调整参数
+        safeSetUniform('u_brightness', (loc) => gl.uniform1f(loc, this.beautyParams.brightness));
+        safeSetUniform('u_contrast', (loc) => gl.uniform1f(loc, this.beautyParams.contrast));
+        safeSetUniform('u_saturation', (loc) => gl.uniform1f(loc, this.beautyParams.saturation));
+        safeSetUniform('u_warmth', (loc) => gl.uniform1f(loc, this.beautyParams.warmth));
+        
+        // 调试输出
+        console.log(`统一美颜参数:`);
+        console.log(`- 瘦脸强度: ${this.beautyParams.faceSlim}`);
+        console.log(`- 大眼强度: ${this.beautyParams.eyeEnlarge}`);
+        console.log(`- 磨皮强度: ${this.beautyParams.skinSmoothing}`);
+        console.log(`- 美白强度: ${this.beautyParams.brightness}`);
+        console.log(`- 对比度: ${this.beautyParams.contrast}`);
+        console.log(`- 饱和度: ${this.beautyParams.saturation}`);
+        console.log(`- 暖色调: ${this.beautyParams.warmth}`);
+        console.log(`- 关键点数量: ${landmarks.length}`);
+        console.log(`- 宽高比: ${aspectRatio}`);
+        
+        // 渲染
+        gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0);
+        
+        console.log('统一美颜渲染完成');
     }
     
     renderFaceReshape(inputTexture, landmarks) {
@@ -1599,12 +1382,12 @@ class WebGLFaceBeautyApp {
         gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.indexBuffer);
         
         // 设置位置属性
-        gl.enableVertexAttribArray(program.attribLocations.position);
-        gl.vertexAttribPointer(program.attribLocations.position, 2, gl.FLOAT, false, 16, 0);
+        gl.enableVertexAttribArray(program.attributeLocations['a_position']);
+        gl.vertexAttribPointer(program.attributeLocations['a_position'], 2, gl.FLOAT, false, 16, 0);
         
         // 设置纹理坐标属性
-        gl.enableVertexAttribArray(program.attribLocations.texCoord);
-        gl.vertexAttribPointer(program.attribLocations.texCoord, 2, gl.FLOAT, false, 16, 8);
+        gl.enableVertexAttribArray(program.attributeLocations['a_texCoord']);
+        gl.vertexAttribPointer(program.attributeLocations['a_texCoord'], 2, gl.FLOAT, false, 16, 8);
     }
     
     copyToResultCanvas() {
