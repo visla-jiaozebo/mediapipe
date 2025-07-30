@@ -108,28 +108,28 @@
                         <h4>💄 皮肤美化 <span style="color: #667eea; font-size: 12px;">GPU Shader</span></h4>
                         
                         <div class="control-group">
-                            <label for="skinSmoothing">双边滤波磨皮</label>
+                            <label for="skinSmoothing">双边滤波磨皮 [skinSmoothing]</label>
                             <div class="slider-container">
-                                <input type="range" id="skinSmoothing" min="0" max="100" value="50">
-                                <span class="value-display" id="skinSmoothingValue">50</span>
+                                <input type="range" id="skinSmoothing" min="0" max="1" step="0.1" value="0">
+                                <span class="value-display" id="skinSmoothingValue">0</span>
                             </div>
                             <small>GPU双边滤波，保边缘去噪点</small>
                         </div>
 
                         <div class="control-group">
-                            <label for="skinBrightening">智能美白</label>
+                            <label for="skinBrightening">智能美白 [skinBrightening]</label>
                             <div class="slider-container">
-                                <input type="range" id="skinBrightening" min="0" max="100" value="60">
-                                <span class="value-display" id="skinBrighteningValue">60</span>
+                                <input type="range" id="skinBrightening" min="0" max="1" step="0.1" value="0.0">
+                                <span class="value-display" id="skinBrighteningValue">0.0</span>
                             </div>
                             <small>GPU色彩空间调整美白</small>
                         </div>
 
                         <div class="control-group">
-                            <label for="skinWarmth">暖色调节</label>
+                            <label for="skinWarmth">暖色调节 [skinWarmth]</label>
                             <div class="slider-container">
-                                <input type="range" id="skinWarmth" min="0" max="100" value="55">
-                                <span class="value-display" id="skinWarmthValue">55</span>
+                                <input type="range" id="skinWarmth" min="0" max="1" value="0.0">
+                                <span class="value-display" id="skinWarmthValue">0.0</span>
                             </div>
                             <small>GPU HSV空间暖色增强</small>
                         </div>
@@ -140,19 +140,19 @@
                         <h4>✨ 面部塑形 <span style="color: #667eea; font-size: 12px;">Vertex Shader</span></h4>
                         
                         <div class="control-group">
-                            <label for="eyeEnlarge">精确大眼</label>
+                            <label for="eyeEnlarge">精确大眼 [eyeEnlarge]</label>
                             <div class="slider-container">
-                                <input type="range" id="eyeEnlarge" min="0" max="100" value="20">
-                                <span class="value-display" id="eyeEnlargeValue">20</span>
+                                <input type="range" id="eyeEnlarge" min="0" max="0.3" step="0.03" value="0.0">
+                                <span class="value-display" id="eyeEnlargeValue">0.0</span>
                             </div>
                             <small>基于眼部关键点的径向放大</small>
                         </div>
 
                         <div class="control-group">
-                            <label for="faceSlim">智能瘦脸</label>
+                            <label for="faceSlim">智能瘦脸 [faceSlim]</label>
                             <div class="slider-container">
-                                <input type="range" id="faceSlim" min="0" max="5" value="2">
-                                <span class="value-display" id="faceSlimValue">2</span>
+                                <input type="range" id="faceSlim" min="0" max="0.1" step="0.01" value="0.0">
+                                <span class="value-display" id="faceSlimValue">0.0</span>
                             </div>
                             <small>曲线变形算法，自然瘦脸</small>
                         </div>
@@ -163,19 +163,19 @@
                         <h4>🔧 色彩调节 <span style="color: #667eea; font-size: 12px;">Fragment Shader</span></h4>
                         
                         <div class="control-group">
-                            <label for="contrast">对比度</label>
+                            <label for="contrast">对比度 [contrast]</label>
                             <div class="slider-container">
-                                <input type="range" id="contrast" min="0" max="100" value="55">
-                                <span class="value-display" id="contrastValue">55</span>
+                                <input type="range" id="contrast" min="-1" max="1" step="0.1" value="0.0">
+                                <span class="value-display" id="contrastValue">0.0</span>
                             </div>
                             <small>GPU并行对比度调整</small>
                         </div>
 
                         <div class="control-group">
-                            <label for="saturation">饱和度</label>
+                            <label for="saturation">饱和度 [saturation]</label>
                             <div class="slider-container">
-                                <input type="range" id="saturation" min="0" max="100" value="57">
-                                <span class="value-display" id="saturationValue">57</span>
+                                <input type="range" id="saturation" min="-1" max="1" step="0.1" value="0.0">
+                                <span class="value-display" id="saturationValue">0.0</span>
                             </div>
                             <small>HSV色彩空间饱和度调节</small>
                         </div>
@@ -186,64 +186,64 @@
                         <h4>💋 化妆效果 <span style="color: #667eea; font-size: 12px;">WebGL Makeup</span></h4>
                         
                         <div class="control-group">
-                            <label for="lipstickIntensity">口红强度</label>
+                            <label for="lipstickIntensity">口红强度 [lipstickIntensity]</label>
                             <div class="slider-container">
-                                <input type="range" id="lipstickIntensity" min="0" max="100" value="0">
+                                <input type="range" id="lipstickIntensity" min="0" max="1" step="0.1" value="0">
                                 <span class="value-display" id="lipstickIntensityValue">0</span>
                             </div>
                             <small>基于唇部关键点的精准上妆</small>
                         </div>
 
                         <div class="control-group">
-                            <label for="lipstickColor">口红颜色</label>
+                            <label for="lipstickColor">口红颜色 [lipstickColor]</label>
                             <div class="color-controls">
                                 <input type="color" id="lipstickColor" value="#ff6b6b">
-                                <input type="range" id="lipstickColorHue" min="0" max="360" value="355" title="色相">
-                                <input type="range" id="lipstickColorSat" min="0" max="100" value="80" title="饱和度">
+                                <input type="range" id="lipstickColorHue" min="0" max="360" step="10" value="355" title="色相">
+                                <input type="range" id="lipstickColorSat" min="0" max="100" step="5" value="80" title="饱和度">
                             </div>
                             <small>HSV色彩空间自定义唇色</small>
                         </div>
 
                         <div class="control-group">
-                            <label for="blushIntensity">腮红强度</label>
+                            <label for="blushIntensity">腮红强度 [blushIntensity]</label>
                             <div class="slider-container">
-                                <input type="range" id="blushIntensity" min="0" max="100" value="0">
+                                <input type="range" id="blushIntensity" min="0" max="1" step="0.1" value="0">
                                 <span class="value-display" id="blushIntensityValue">0</span>
                             </div>
                             <small>面部轮廓识别智能腮红</small>
                         </div>
 
                         <div class="control-group">
-                            <label for="blushColor">腮红颜色</label>
+                            <label for="blushColor">腮红颜色 [blushColor]</label>
                             <div class="color-controls">
                                 <input type="color" id="blushColor" value="#ff9999">
-                                <input type="range" id="blushColorHue" min="0" max="360" value="10" title="色相">
-                                <input type="range" id="blushColorSat" min="0" max="100" value="60" title="饱和度">
+                                <input type="range" id="blushColorHue" min="0" max="360" step="10" value="10" title="色相">
+                                <input type="range" id="blushColorSat" min="0" max="100" step="5" value="60" title="饱和度">
                             </div>
                             <small>自然粉色调腮红效果</small>
                         </div>
 
                         <div class="control-group">
-                            <label for="eyeshadowIntensity">眼影强度</label>
+                            <label for="eyeshadowIntensity">眼影强度 [eyeshadowIntensity]</label>
                             <div class="slider-container">
-                                <input type="range" id="eyeshadowIntensity" min="0" max="100" value="0">
+                                <input type="range" id="eyeshadowIntensity" min="0" max="1" step="0.1" value="0">
                                 <span class="value-display" id="eyeshadowIntensityValue">0</span>
                             </div>
                             <small>眼部轮廓渐变眼影</small>
                         </div>
 
                         <div class="control-group">
-                            <label for="eyeshadowColor">眼影颜色</label>
+                            <label for="eyeshadowColor">眼影颜色 [eyeshadowColor]</label>
                             <div class="color-controls">
                                 <input type="color" id="eyeshadowColor" value="#d4a574">
-                                <input type="range" id="eyeshadowColorHue" min="0" max="360" value="30" title="色相">
-                                <input type="range" id="eyeshadowColorSat" min="0" max="100" value="50" title="饱和度">
+                                <input type="range" id="eyeshadowColorHue" min="0" max="360" step="10" value="30" title="色相">
+                                <input type="range" id="eyeshadowColorSat" min="0" max="100" step="5" value="50" title="饱和度">
                             </div>
                             <small>大地色系眼影效果</small>
                         </div>
 
                         <div class="control-group">
-                            <label for="makeupBlendMode">混合模式</label>
+                            <label for="makeupBlendMode">混合模式 [makeupBlendMode]</label>
                             <select id="makeupBlendMode">
                                 <option value="0">普通混合</option>
                                 <option value="1">柔光混合</option>
@@ -284,6 +284,6 @@
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
     
     <!-- WebGL美颜脚本 -->
-    <script src="webgl-face-beauty.js"></script>
+    <script src="dist/webgl-face-beauty.js"></script>
 </body>
 </html>

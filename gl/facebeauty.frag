@@ -246,11 +246,10 @@ void main() {
     }
     if (u_saturation != 0.0)
     {
-
-            // 饱和度调整
-            vec3 hsv = rgb2hsv(color.rgb);
-            hsv.y *= (1.0 + u_saturation);
-            color.rgb = hsv2rgb(hsv);
+        // 饱和度调整
+        vec3 hsv = rgb2hsv(color.rgb);
+        hsv.y *= (1.0 + u_saturation);
+        color.rgb = hsv2rgb(hsv);
             
     }
 

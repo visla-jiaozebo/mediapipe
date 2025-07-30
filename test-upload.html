@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>上传功能测试</title>
+    <style>
+        .test-upload-area {
+            width: 300px;
+            height: 200px;
+            border: 2px dashed #ccc;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            margin: 20px;
+        }
+        .test-upload-area:hover {
+            border-color: #007bff;
+            background-color: #f8f9fa;
+        }
+    </style>
+</head>
+<body>
+    <h1>上传功能测试</h1>
+    
+    <div id="testUploadArea" class="test-upload-area">
+        点击此处测试上传功能
+    </div>
+    
+    <input type="file" id="testImageInput" accept="image/*" style="display: none;">
+    
+    <div id="result"></div>
+    
+    <script>
+        const testUploadArea = document.getElementById('testUploadArea');
+        const testImageInput = document.getElementById('testImageInput');
+        const result = document.getElementById('result');
+        
+        console.log('测试脚本加载完成');
+        console.log('uploadArea:', testUploadArea);
+        console.log('imageInput:', testImageInput);
+        
+        if (testUploadArea && testImageInput) {
+            testUploadArea.addEventListener('click', () => {
+                console.log('上传区域被点击');
+                result.innerHTML = '<p>上传区域被点击，正在打开文件选择对话框...</p>';
+                testImageInput.click();
+            });
+            
+            testImageInput.addEventListener('change', (e) => {
+                const files = e.target.files;
+                console.log('文件选择事件触发，文件数量:', files.length);
+                if (files && files.length > 0) {
+                    const file = files[0];
+                    result.innerHTML = `<p>选择了文件: ${file.name} (${file.size} bytes)</p>`;
+                    console.log('选择的文件:', file);
+                }
+            });
+            
+            console.log('事件监听器绑定完成');
+        } else {
+            console.error('无法找到必要的DOM元素');
+            result.innerHTML = '<p style="color: red;">错误：无法找到必要的DOM元素</p>';
+        }
+    </script>
+</body>
+</html>
