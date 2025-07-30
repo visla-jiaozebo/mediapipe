@@ -5,8 +5,15 @@
  * 功能: GPU shader 实现的瘦脸、大眼、磨皮效果
  */
 
+// 导入样式文件
+import './styles.css';
+
+// 导入录制模块
+import { VideoRecorder } from './video-recorder';
+import type { RecordingOptions, RecordingCallbacks } from './video-recorder';
+
 // 类型定义
-class BeautyParams {
+export class BeautyParams {
     faceSlim: number;
     eyeEnlarge: number;
     skinSmoothing: number;
@@ -102,6 +109,9 @@ class WebGLFaceBeautyApp {
     private faceMakeupVertexBuffer: WebGLBuffer | null = null;
     private faceMakeupTexCoordBuffer: WebGLBuffer | null = null;
     private faceMakeupIndexBuffer: WebGLBuffer | null = null;
+    
+    // 录制相关
+    private videoRecorder: VideoRecorder | null = null;
     
     constructor() {
         this.init();
@@ -451,6 +461,14 @@ class WebGLFaceBeautyApp {
             });
         }
 
+        // 录制按钮
+        const recordBtn = document.getElementById('recordBtn');
+        if (recordBtn) {
+            recordBtn.addEventListener('click', () => {
+                this.handleRecordButtonClick();
+            });
+        }
+
         // 下载按钮
         const downloadBtn = document.getElementById('downloadBtn');
         if (downloadBtn) {
@@ -512,13 +530,19 @@ class WebGLFaceBeautyApp {
         const ctx = canvas.getContext('2d');
         if (!ctx) throw new Error('无法获取2D渲染上下文');
         
-        // 设置合适的画布尺寸
-        const maxWidth = 400;
-        const maxHeight = 300;
-        const scale = Math.min(maxWidth / this.originalImage.width, maxHeight / this.originalImage.height);
+        // 设置画布尺寸 - 保持原始分辨率用于录制
+        // 显示尺寸和实际分辨率分离
+        const maxDisplayWidth = 400;
+        const maxDisplayHeight = 300;
+        const displayScale = Math.min(maxDisplayWidth / this.originalImage.width, maxDisplayHeight / this.originalImage.height);
         
-        canvas.width = this.originalImage.width * scale;
-        canvas.height = this.originalImage.height * scale;
+        // 设置canvas实际分辨率为原始图片分辨率
+        canvas.width = this.originalImage.width;
+        canvas.height = this.originalImage.height;
+        
+        // 设置canvas显示尺寸
+        canvas.style.width = `${this.originalImage.width * displayScale}px`;
+        canvas.style.height = `${this.originalImage.height * displayScale}px`;
         
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.drawImage(this.originalImage, 0, 0, canvas.width, canvas.height);
@@ -724,8 +748,14 @@ class WebGLFaceBeautyApp {
         const ctx = resultCanvas.getContext('2d');
         if (!ctx) return;
         
+        // 设置resultCanvas与originalCanvas相同的配置
+        // 实际分辨率保持原始图片大小
         resultCanvas.width = this.originalCanvas.width;
         resultCanvas.height = this.originalCanvas.height;
+        
+        // 设置显示尺寸与originalCanvas相同（通过CSS控制）
+        resultCanvas.style.width = this.originalCanvas.style.width;
+        resultCanvas.style.height = this.originalCanvas.style.height;
         
         // 翻转WebGL画布到正确方向
         ctx.save();
@@ -789,6 +819,144 @@ class WebGLFaceBeautyApp {
             console.error('下载失败:', error);
             this.showError('下载失败，请重试！');
         }
+    }
+
+    /**
+     * 处理录制按钮点击
+     */
+    private async handleRecordButtonClick(): Promise<void> {
+        const resultCanvas = document.getElementById('resultCanvas') as HTMLCanvasElement;
+        const recordBtn = document.getElementById('recordBtn') as HTMLButtonElement;
+        
+        if (!resultCanvas || resultCanvas.width === 0 || resultCanvas.height === 0) {
+            this.showError('请先上传图片并进行美颜处理！');
+            return;
+        }
+        
+        if (!this.originalImage || this.faceLandmarks.length === 0) {
+            this.showError('请确保已检测到人脸后再开始录制！');
+            return;
+        }
+        
+        try {
+            // 初始化录制器
+            if (!this.videoRecorder) {
+                this.initializeVideoRecorder(resultCanvas);
+            }
+            
+            if (this.videoRecorder?.getRecordingState()) {
+                this.showError('正在录制中，请稍候...');
+                return;
+            }
+            
+            // 更新按钮状态
+            this.updateRecordButtonState(recordBtn, 'recording');
+            
+            // 开始录制 - 现在使用原始canvas的完整分辨率
+            await this.videoRecorder!.startRecording({
+                duration: 5000,  // 5秒
+                frameRate: 30,
+                videoBitsPerSecond: 8000000 // 8Mbps高码率
+            });
+            
+        } catch (error) {
+            console.error('录制失败:', error);
+            this.showError('录制失败: ' + (error as Error).message);
+            this.updateRecordButtonState(recordBtn, 'idle');
+        }
+    }
+
+    /**
+     * 初始化视频录制器
+     */
+    private initializeVideoRecorder(canvas: HTMLCanvasElement): void {
+        const callbacks: RecordingCallbacks = {
+            onStart: () => {
+                this.showSuccess('开始录制视频，5秒后自动停止...');
+                console.log('录制开始');
+            },
+            
+            onStop: () => {
+                const recordBtn = document.getElementById('recordBtn') as HTMLButtonElement;
+                this.updateRecordButtonState(recordBtn, 'idle');
+                this.showSuccess('🎉 视频录制并下载成功！');
+                console.log('录制停止');
+            },
+            
+            onError: (error: Error) => {
+                console.error('录制错误:', error);
+                this.showError('录制过程中发生错误: ' + error.message);
+                const recordBtn = document.getElementById('recordBtn') as HTMLButtonElement;
+                this.updateRecordButtonState(recordBtn, 'idle');
+            },
+            
+            onProgress: (progress: number) => {
+                const recordBtn = document.getElementById('recordBtn') as HTMLButtonElement;
+                const percentage = Math.round(progress * 100);
+                recordBtn.innerHTML = `🔴 录制中... ${percentage}%`;
+            }
+        };
+
+        this.videoRecorder = new VideoRecorder(canvas, this.beautyParams, callbacks);
+        
+        // 监听参数变化事件，重新渲染美颜效果
+        canvas.addEventListener('beautyParamsChanged', () => {
+            if (this.originalImage && this.faceLandmarks.length > 0) {
+                this.applyWebGLBeautyEffects();
+            }
+        });
+        
+        // 监听参数恢复事件，更新UI控件
+        canvas.addEventListener('beautyParamsRestored', () => {
+            this.updateControlsFromParams();
+            if (this.originalImage && this.faceLandmarks.length > 0) {
+                this.applyWebGLBeautyEffects();
+            }
+        });
+    }
+
+    /**
+     * 更新录制按钮状态
+     */
+    private updateRecordButtonState(button: HTMLButtonElement, state: 'idle' | 'recording'): void {
+        if (state === 'recording') {
+            button.disabled = true;
+            button.innerHTML = '🔴 录制中...';
+            button.style.background = 'linear-gradient(45deg, #ff4757, #ff6b6b)';
+            button.style.animation = 'recordingBlink 1s infinite';
+        } else {
+            button.disabled = false;
+            button.innerHTML = '🎥 录制视频 (5秒)';
+            button.style.background = 'linear-gradient(45deg, #ff6b6b, #feca57)';
+            button.style.animation = 'recordPulse 2s infinite';
+        }
+    }
+
+    /**
+     * 根据当前参数更新UI控件
+     */
+    private updateControlsFromParams(): void {
+        const controlMapping: { [key: string]: keyof BeautyParams } = {
+            'skinSmoothing': 'skinSmoothing',
+            'skinBrightening': 'brightness', 
+            'skinWarmth': 'warmth',
+            'eyeEnlarge': 'eyeEnlarge',
+            'faceSlim': 'faceSlim',
+            'contrast': 'contrast',
+            'saturation': 'saturation'
+        };
+        
+        Object.keys(controlMapping).forEach(controlId => {
+            const paramKey = controlMapping[controlId];
+            const slider = document.getElementById(controlId) as HTMLInputElement;
+            const valueDisplay = document.getElementById(controlId + 'Value');
+            
+            if (slider && valueDisplay) {
+                const currentValue = this.beautyParams[paramKey];
+                slider.value = currentValue.toString();
+                valueDisplay.textContent = currentValue.toString();
+            }
+        });
     }
 
     private updateFaceInfo(): void {
@@ -857,6 +1025,52 @@ class WebGLFaceBeautyApp {
                 }
             }, 3000);
         }
+    }
+
+    /**
+     * 清理资源
+     */
+    public dispose(): void {
+        // 清理录制器
+        if (this.videoRecorder) {
+            this.videoRecorder.dispose();
+            this.videoRecorder = null;
+        }
+
+        // 清理WebGL资源
+        if (this.gl) {
+            const gl = this.gl;
+            
+            // 清理纹理
+            Object.values(this.textures).forEach(texture => {
+                if (texture) gl.deleteTexture(texture);
+            });
+            
+            // 清理帧缓冲
+            Object.values(this.framebuffers).forEach(framebuffer => {
+                if (framebuffer) gl.deleteFramebuffer(framebuffer);
+            });
+            
+            // 清理缓冲区
+            if (this.vertexBuffer) gl.deleteBuffer(this.vertexBuffer);
+            if (this.indexBuffer) gl.deleteBuffer(this.indexBuffer);
+            if (this.faceMakeupVertexBuffer) gl.deleteBuffer(this.faceMakeupVertexBuffer);
+            if (this.faceMakeupTexCoordBuffer) gl.deleteBuffer(this.faceMakeupTexCoordBuffer);
+            if (this.faceMakeupIndexBuffer) gl.deleteBuffer(this.faceMakeupIndexBuffer);
+            
+            // 清理程序
+            Object.values(this.programs).forEach(programInfo => {
+                if (programInfo?.program) gl.deleteProgram(programInfo.program);
+            });
+        }
+
+        // 清理MediaPipe
+        if (this.faceMesh) {
+            this.faceMesh.close();
+            this.faceMesh = null;
+        }
+
+        console.log('资源清理完成');
     }
 }
 

@@ -4,11 +4,11 @@
   "description": "基于MediaPipe和OpenCV.js的Web人脸美颜系统",
   "main": "index.html",
   "scripts": {
-    "start": "python -m http.server 8000",
-    "serve": "npx http-server -p 8000 -c-1",
-    "dev": "npx live-server --port=8000",
-    "build": "tsc",
-    "build:watch": "tsc --watch",
+    "start": "webpack serve --open",
+    "build": "webpack --mode production",
+    "build:dev": "webpack --mode development",
+    "build:watch": "webpack --mode development --watch",
+    "serve:dist": "npx http-server dist -p 8080 -c-1 --cors",
     "type-check": "tsc --noEmit"
   },
   "keywords": [
@@ -25,10 +25,18 @@
     "@mediapipe/tasks-vision": "^0.10.22-rc.20250304"
   },
   "devDependencies": {
+    "@types/node": "^20.0.0",
+    "copy-webpack-plugin": "^13.0.0",
+    "css-loader": "^7.1.2",
+    "html-webpack-plugin": "^5.6.3",
     "http-server": "^14.1.1",
     "live-server": "^1.2.2",
+    "style-loader": "^4.0.0",
+    "ts-loader": "^9.5.2",
     "typescript": "^5.0.0",
-    "@types/node": "^20.0.0"
+    "webpack": "^5.101.0",
+    "webpack-cli": "^6.0.1",
+    "webpack-dev-server": "^5.2.2"
   },
   "browserslist": [
     "Chrome >= 88",

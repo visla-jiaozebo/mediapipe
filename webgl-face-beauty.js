@@ -52,6 +52,11 @@ class WebGLFaceBeautyApp {
             eyeshadow: null
         };
         
+        // 录制相关
+        this.mediaRecorder = null;
+        this.recordedChunks = [];
+        this.isRecording = false;
+        
         this.init();
     }
     
@@ -317,9 +322,11 @@ class WebGLFaceBeautyApp {
 
         // 功能按钮
         const resetBtn = document.getElementById('resetBtn');
+        const recordBtn = document.getElementById('recordBtn');
         const downloadBtn = document.getElementById('downloadBtn');
         
         if (resetBtn) resetBtn.addEventListener('click', this.resetParameters.bind(this));
+        if (recordBtn) recordBtn.addEventListener('click', this.recordVideo.bind(this));
         if (downloadBtn) downloadBtn.addEventListener('click', this.downloadResult.bind(this));
     }
     
@@ -1471,6 +1478,202 @@ class WebGLFaceBeautyApp {
         } catch (error) {
             console.error('下载失败:', error);
             this.showError('下载失败，请重试！');
+        }
+    }
+    
+    async recordVideo() {
+        const resultCanvas = document.getElementById('resultCanvas');
+        const recordBtn = document.getElementById('recordBtn');
+        
+        if (!resultCanvas || resultCanvas.width === 0 || resultCanvas.height === 0) {
+            this.showError('请先上传图片并进行美颜处理！');
+            return;
+        }
+        
+        if (this.isRecording) {
+            this.showError('正在录制中，请稍候...');
+            return;
+        }
+        
+        try {
+            this.isRecording = true;
+            this.recordedChunks = [];
+            
+            // 更新按钮状态
+            recordBtn.disabled = true;
+            recordBtn.innerHTML = '🔴 录制中...';
+            recordBtn.style.background = 'linear-gradient(45deg, #ff4757, #ff6b6b)';
+            
+            this.showSuccess('开始录制视频，5秒后自动停止...');
+            
+            // 获取canvas流
+            const stream = resultCanvas.captureStream(30); // 30 FPS
+            
+            // 创建MediaRecorder
+            this.mediaRecorder = new MediaRecorder(stream, {
+                mimeType: 'video/webm;codecs=vp9',
+                videoBitsPerSecond: 2500000 // 2.5Mbps
+            });
+            
+            // 设置数据处理器
+            this.mediaRecorder.ondataavailable = (event) => {
+                if (event.data.size > 0) {
+                    this.recordedChunks.push(event.data);
+                }
+            };
+            
+            // 设置停止处理器
+            this.mediaRecorder.onstop = () => {
+                this.saveRecordedVideo();
+                this.isRecording = false;
+                
+                // 恢复按钮状态
+                recordBtn.disabled = false;
+                recordBtn.innerHTML = '🎥 录制视频 (5秒)';
+                recordBtn.style.background = 'linear-gradient(45deg, #ff6b6b, #feca57)';
+            };
+            
+            // 开始录制
+            this.mediaRecorder.start();
+            
+            // 开始参数动画演示
+            this.startParameterAnimation();
+            
+            // 5秒后停止录制
+            setTimeout(() => {
+                if (this.mediaRecorder && this.mediaRecorder.state === 'recording') {
+                    this.mediaRecorder.stop();
+                    this.stopParameterAnimation();
+                    this.showSuccess('视频录制完成，正在处理...');
+                }
+            }, 5000);
+            
+        } catch (error) {
+            console.error('录制失败:', error);
+            this.showError('录制功能不支持或出现错误: ' + error.message);
+            this.isRecording = false;
+            
+            // 恢复按钮状态
+            recordBtn.disabled = false;
+            recordBtn.innerHTML = '🎥 录制视频 (5秒)';
+            recordBtn.style.background = 'linear-gradient(45deg, #ff6b6b, #feca57)';
+        }
+    }
+    
+    startParameterAnimation() {
+        // 保存当前参数
+        this.originalParams = { ...this.beautyParams };
+        
+        // 创建参数动画序列
+        this.animationInterval = setInterval(() => {
+            // 随机调整美颜参数以展示效果
+            const params = ['faceSlim', 'eyeEnlarge', 'skinSmoothing', 'brightness'];
+            const randomParam = params[Math.floor(Math.random() * params.length)];
+            
+            if (randomParam === 'faceSlim' || randomParam === 'eyeEnlarge') {
+                this.beautyParams[randomParam] = Math.random() * 0.05; // 较小范围
+            } else if (randomParam === 'skinSmoothing') {
+                this.beautyParams[randomParam] = 0.3 + Math.random() * 0.4; // 0.3-0.7
+            } else if (randomParam === 'brightness') {
+                this.beautyParams[randomParam] = -0.2 + Math.random() * 0.4; // -0.2-0.2
+            }
+            
+            // 应用效果
+            if (this.originalImage && this.faceLandmarks.length > 0) {
+                this.applyWebGLBeautyEffects();
+            }
+            
+        }, 200); // 每200ms更新一次
+    }
+    
+    stopParameterAnimation() {
+        if (this.animationInterval) {
+            clearInterval(this.animationInterval);
+            this.animationInterval = null;
+        }
+        
+        // 恢复原始参数
+        if (this.originalParams) {
+            this.beautyParams = { ...this.originalParams };
+            
+            // 更新UI显示
+            this.updateControlsFromParams();
+            
+            // 应用最终效果
+            if (this.originalImage && this.faceLandmarks.length > 0) {
+                this.applyWebGLBeautyEffects();
+            }
+        }
+    }
+    
+    updateControlsFromParams() {
+        const controlMapping = {
+            'skinSmoothing': 'skinSmoothing',
+            'skinBrightening': 'brightness', 
+            'skinWarmth': 'warmth',
+            'eyeEnlarge': 'eyeEnlarge',
+            'faceSlim': 'faceSlim',
+            'contrast': 'contrast',
+            'saturation': 'saturation'
+        };
+        
+        Object.keys(controlMapping).forEach(controlId => {
+            const paramKey = controlMapping[controlId];
+            const slider = document.getElementById(controlId);
+            const valueDisplay = document.getElementById(controlId + 'Value');
+            
+            if (slider && valueDisplay) {
+                let displayValue;
+                
+                // 转换参数值到滑块值
+                if (paramKey === 'faceSlim' || paramKey === 'eyeEnlarge') {
+                    displayValue = Math.round(this.beautyParams[paramKey] * 100);
+                    slider.value = displayValue;
+                } else if (paramKey === 'skinSmoothing') {
+                    displayValue = Math.round(this.beautyParams[paramKey] * 100);
+                    slider.value = displayValue;
+                } else {
+                    // brightness, contrast, saturation, warmth
+                    displayValue = Math.round((this.beautyParams[paramKey] + 1.0) * 50);
+                    slider.value = displayValue;
+                }
+                
+                valueDisplay.textContent = displayValue;
+            }
+        });
+    }
+    
+    saveRecordedVideo() {
+        if (this.recordedChunks.length === 0) {
+            this.showError('录制数据为空，请重试');
+            return;
+        }
+        
+        try {
+            // 创建视频blob
+            const blob = new Blob(this.recordedChunks, {
+                type: 'video/webm'
+            });
+            
+            // 创建下载链接
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `webgl_beauty_video_${Date.now()}.webm`;
+            
+            // 触发下载
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            // 清理URL
+            URL.revokeObjectURL(url);
+            
+            this.showSuccess('🎉 视频录制并下载成功！文件格式: WebM');
+            
+        } catch (error) {
+            console.error('保存视频失败:', error);
+            this.showError('保存视频失败: ' + error.message);
         }
     }
     

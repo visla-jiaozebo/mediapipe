@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GPU美颜Demo - WebGL Shader加速</title>
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <link rel="alternate icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%23667eea'/><text x='16' y='24' font-family='Arial' font-size='20' text-anchor='middle' fill='white'>🚀</text></svg>">
+    
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        /* 增强样式，突出GPU加速特点 */
+        .header h1 {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .gpu-badge {
+            display: inline-block;
+            background: linear-gradient(45deg, #ff6b6b, #feca57);
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+            margin-left: 10px;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+        
+        .performance-info {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            margin: 20px 0;
+            text-align: center;
+        }
+        
+        .performance-info h4 {
+            margin: 0 0 10px 0;
+        }
+        
+        @keyframes recordPulse {
+            0% { box-shadow: 0 0 0 0 rgba(255, 107, 107, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(255, 107, 107, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(255, 107, 107, 0); }
+        }
+        
+        @keyframes recordingBlink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0.7; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- 头部标题 -->
+        <div class="header">
+            <h1>🎨 GPU美颜Demo <span class="gpu-badge">WebGL加速</span></h1>
+            <div class="performance-info">
+                <h4>🚀 GPU硬件加速技术</h4>
+                <p>基于WebGL Shader实现实时高质量美颜处理，比CPU处理快100倍以上！</p>
+            </div>
+        </div>
+
+        <!-- 加载界面 -->
+        <div id="loading" class="loading">
+            <div class="loading-spinner"></div>
+            <p>正在初始化GPU美颜系统...</p>
+        </div>
+
+        <!-- 主要内容区域 -->
+        <div class="main-content">
+            <!-- 上传区域 -->
+            <div class="upload-section">
+                <div class="upload-area" id="uploadArea">
+                    <div class="upload-icon">📷</div>
+                    <h3>上传图片开始美颜</h3>
+                    <p>支持拖拽上传 • 支持JPG、PNG格式 • 最大10MB</p>
+                    <button class="upload-btn">选择图片</button>
+                </div>
+                <input type="file" id="imageInput" accept="image/*" style="display: none;">
+            </div>
+
+            <!-- 图片显示区域 -->
+            <div class="image-section">
+                <div class="image-container">
+                    <div class="image-box">
+                        <h3>📸 原始图片</h3>
+                        <canvas id="originalCanvas" class="image-canvas"></canvas>
+                    </div>
+                    <div class="arrow">→</div>
+                    <div class="image-box">
+                        <h3>✨ GPU美颜效果</h3>
+                        <canvas id="resultCanvas" class="image-canvas"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 人脸检测信息 -->
+            <div id="faceInfo" class="face-info" style="display: none;">
+                <h3>🎯 人脸检测结果</h3>
+                <div id="faceCount" class="face-count"></div>
+                <div id="landmarkInfo" class="landmark-info"></div>
+            </div>
+
+            <!-- 美颜控制面板 -->
+            <div class="controls-section">
+                <h3>🎛️ GPU美颜参数控制</h3>
+                
+                <!-- 面部塑形 -->
+                <div class="control-group">
+                    <h4>👤 面部塑形 [faceShape]</h4>
+                    <div class="control-row">
+                        <label for="faceSlim">瘦脸 [faceSlim]:</label>
+                        <input type="range" id="faceSlim" min="0" max="1" step="0.01" value="0">
+                        <span id="faceSlimValue">0</span>
+                    </div>
+                    <div class="control-row">
+                        <label for="eyeEnlarge">大眼 [eyeEnlarge]:</label>
+                        <input type="range" id="eyeEnlarge" min="0" max="1" step="0.01" value="0">
+                        <span id="eyeEnlargeValue">0</span>
+                    </div>
+                </div>
+
+                <!-- 皮肤美化 -->
+                <div class="control-group">
+                    <h4>✨ 皮肤美化 [skinBeauty]</h4>
+                    <div class="control-row">
+                        <label for="skinSmoothing">磨皮 [skinSmoothing]:</label>
+                        <input type="range" id="skinSmoothing" min="0" max="1" step="0.01" value="0">
+                        <span id="skinSmoothingValue">0</span>
+                    </div>
+                    <div class="control-row">
+                        <label for="skinBrightening">美白 [skinBrightening]:</label>
+                        <input type="range" id="skinBrightening" min="0" max="1" step="0.01" value="0">
+                        <span id="skinBrighteningValue">0</span>
+                    </div>
+                    <div class="control-row">
+                        <label for="skinWarmth">暖色调 [skinWarmth]:</label>
+                        <input type="range" id="skinWarmth" min="-1" max="1" step="0.01" value="0">
+                        <span id="skinWarmthValue">0</span>
+                    </div>
+                </div>
+
+                <!-- 颜色调整 -->
+                <div class="control-group">
+                    <h4>🎨 颜色调整 [colorAdjust]</h4>
+                    <div class="control-row">
+                        <label for="contrast">对比度 [contrast]:</label>
+                        <input type="range" id="contrast" min="-1" max="1" step="0.01" value="0">
+                        <span id="contrastValue">0</span>
+                    </div>
+                    <div class="control-row">
+                        <label for="saturation">饱和度 [saturation]:</label>
+                        <input type="range" id="saturation" min="-1" max="1" step="0.01" value="0">
+                        <span id="saturationValue">0</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 操作按钮 -->
+            <div class="action-buttons">
+                <button id="resetBtn" class="action-btn reset-btn">🔄 重置参数</button>
+                <button id="recordBtn" class="action-btn record-btn">🎥 录制视频 (5秒)</button>
+                <button id="downloadBtn" class="action-btn download-btn">💾 下载图片</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MediaPipe 依赖 -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+</body>
+</html>
