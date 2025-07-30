@@ -21,6 +21,14 @@ export class BeautyParams {
     contrast: number;
     saturation: number;
     warmth: number;
+    
+    // 唇部化妆参数
+    lipstickIntensity: number;
+    lipstickBlendMode: number;
+    blushIntensity: number;
+    eyeshadowIntensity: number;
+    blushBlendMode: number;
+    eyeshadowBlendMode: number;
 
     constructor() {
         this.faceSlim = 0.0;       // 瘦脸强度 [0.0, 1.0] - 匹配HTML默认值
@@ -30,16 +38,17 @@ export class BeautyParams {
         this.contrast = 0.0;       // 对比度 [-1.0, 1.0] - 匹配HTML默认值
         this.saturation = 0.0;    // 饱和度 [-1.0, 1.0] - 匹配HTML默认值
         this.warmth = 0.0;         // 暖色调 [-1.0, 1.0]
-    }
-}
+        
+        // 唇部化妆默认值
+        this.lipstickIntensity = 0.0;   // 唇膏强度 [0.0, 1.0]
+        this.lipstickBlendMode = 0;   // 唇膏混合模式: 0=正常, 1=叠加, 2=柔光
 
-interface MakeupParams {
-    lipstickIntensity: number;
-    blushIntensity: number;
-    eyeshadowIntensity: number;
-    lipstickBlendMode: number;
-    blushBlendMode: number;
-    eyeshadowBlendMode: number;
+        this.blushIntensity = 0;     // 混合模式: 0=正常, 1=叠加, 2=柔光
+        this.blushBlendMode = 0;      // 腮红混合模式: 0=正常, 1=叠加, 2=柔光
+
+        this.eyeshadowIntensity = 0; // 混合模式: 0=正常, 1=叠加, 2=柔光
+        this.eyeshadowBlendMode = 0;  // 眼影混合模式: 0=正常, 1=叠加, 2=柔光
+    }
 }
 
 interface MakeupTextures {
@@ -104,6 +113,9 @@ class WebGLFaceBeautyApp {
         blush: null,
         eyeshadow: null
     };
+
+    // 唇部纹理
+    private lipTexture: WebGLTexture | null = null;
 
     // 化妆相关缓冲区
     private faceMakeupVertexBuffer: WebGLBuffer | null = null;
@@ -262,34 +274,84 @@ class WebGLFaceBeautyApp {
         console.log('设置几何体...');
         this.setupGeometry();
         
+        // 创建默认唇部纹理
+        console.log('创建默认唇部纹理...');
+        await this.createDefaultLipTexture();
+        
         console.log('WebGL初始化完成');
     }
-    
-    private setupGeometry(): void {
+
+
+    private async createDefaultLipTexture(): Promise<void> {
+        if (!this.gl) return;
+        
+        const gl = this.gl;
+        // 加载 gl/mouth.png 图片文件
+            const image = new Image();
+            image.crossOrigin = 'anonymous';
+            
+            await new Promise<void>((resolve, reject) => {
+                image.onload = () => {
+                    // 创建纹理
+                    this.lipTexture = gl.createTexture();
+                    gl.bindTexture(gl.TEXTURE_2D, this.lipTexture);
+                    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+                    
+                    console.log('唇部纹理从 gl/mouth.png 加载完成');
+                    resolve();
+                };
+                
+                image.onerror = (e) => {
+                    console.warn('无法加载 gl/mouth.');
+                    reject(e);
+                };
+                
+                image.src = 'gl/mouth.png';
+            });
+    }
+
+    private createFallbackLipTexture(): void {
         if (!this.gl) return;
         
         const gl = this.gl;
         
-        // 全屏四边形顶点 (位置 + 纹理坐标)
-        const vertices = new Float32Array([
-            // 位置      纹理坐标
-            -1.0, -1.0,  0.0, 0.0,
-             1.0, -1.0,  1.0, 0.0,
-            -1.0,  1.0,  0.0, 1.0,
-             1.0,  1.0,  1.0, 1.0,
-        ]);
+        // 创建一个简单的红色渐变纹理作为备用唇膏
+        const size = 64;
+        const data = new Uint8Array(size * size * 4);
         
-        const indices = new Uint16Array([0, 1, 2, 1, 3, 2]);
+        for (let y = 0; y < size; y++) {
+            for (let x = 0; x < size; x++) {
+                const index = (y * size + x) * 4;
+                
+                // 创建径向渐变效果
+                const centerX = size / 2;
+                const centerY = size / 2;
+                const distance = Math.sqrt((x - centerX) ** 2 + (y - centerY) ** 2);
+                const maxDistance = size / 2;
+                const intensity = Math.max(0, 1 - (distance / maxDistance));
+                
+                // 红色唇膏颜色 (RGB: 200, 50, 50)
+                data[index] = Math.floor(200 * intensity);     // R
+                data[index + 1] = Math.floor(50 * intensity);  // G
+                data[index + 2] = Math.floor(50 * intensity);  // B
+                data[index + 3] = Math.floor(255 * intensity); // A
+            }
+        }
         
-        // 创建顶点缓冲区
-        this.vertexBuffer = gl.createBuffer();
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.vertexBuffer);
-        gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+        // 创建纹理
+        this.lipTexture = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, this.lipTexture);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, size, size, 0, gl.RGBA, gl.UNSIGNED_BYTE, data);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
         
-        // 创建索引缓冲区
-        this.indexBuffer = gl.createBuffer();
-        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.indexBuffer);
-        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW);
+        console.log('备用唇部纹理创建完成');
     }
 
     private async initializeMediaPipe(): Promise<void> {
@@ -306,7 +368,7 @@ class WebGLFaceBeautyApp {
 
             this.faceMesh.setOptions({
                 maxNumFaces: 1,
-                refineLandmarks: true,
+                refineLandmarks: false,
                 minDetectionConfidence: 0.5,
                 minTrackingConfidence: 0.5
             });
@@ -429,7 +491,10 @@ class WebGLFaceBeautyApp {
             'eyeEnlarge': 'eyeEnlarge',
             'faceSlim': 'faceSlim',
             'contrast': 'contrast',
-            'saturation': 'saturation'
+            'saturation': 'saturation',
+            'lipstickIntensity': 'lipstickIntensity',
+            'blushIntensity': 'blushIntensity',
+            'eyeshadowIntensity': 'eyeshadowIntensity'
         };
 
         Object.keys(controlMapping).forEach(controlId => {
@@ -452,6 +517,20 @@ class WebGLFaceBeautyApp {
                 });
             }
         });
+
+        // 唇膏混合模式控件
+        const lipstickBlendModeSelect = document.getElementById('lipstickBlendMode') as HTMLSelectElement;
+        if (lipstickBlendModeSelect) {
+            lipstickBlendModeSelect.addEventListener('change', (e) => {
+                const value = parseInt((e.target as HTMLSelectElement).value);
+                this.beautyParams.lipstickBlendMode = value;
+                
+                // 实时应用效果
+                if (this.originalImage && this.faceLandmarks.length > 0) {
+                    this.applyWebGLBeautyEffects();
+                }
+            });
+        }
 
         // 重置按钮
         const resetBtn = document.getElementById('resetBtn');
@@ -593,7 +672,7 @@ class WebGLFaceBeautyApp {
             const inputTexture = this.createTextureFromCanvas(this.originalCanvas);
             
             // 转换关键点到纹理坐标
-            const landmarks = this.convertLandmarksToTextureCoords(this.faceLandmarks[0]);
+            const landmarks = this.faceLandmarks[0];
             
             // 使用统一的美颜shader一次性渲染所有效果
             gl.bindFramebuffer(gl.FRAMEBUFFER, null);
@@ -632,14 +711,6 @@ class WebGLFaceBeautyApp {
         return texture;
     }
 
-    private convertLandmarksToTextureCoords(landmarks: any[]): Landmark[] {
-        return landmarks.map(point => ({
-            x: point.x,  // MediaPipe已经是归一化坐标 [0,1]
-            y: point.y,  // 保持原始Y坐标，不翻转
-            z: point.z || 0
-        }));
-    }
-
     private renderUnifiedBeautyEffects(inputTexture: WebGLTexture, landmarks: Landmark[]): void {
         if (!this.gl || !this.programs.faceBeauty || !this.originalCanvas) return;
         
@@ -669,6 +740,13 @@ class WebGLFaceBeautyApp {
         
         // 设置纹理uniform
         safeSetUniform('u_texture', (loc) => gl.uniform1i(loc, 0));
+        
+        // 设置唇部化妆纹理
+        if (this.lipTexture) {
+            gl.activeTexture(gl.TEXTURE1);
+            gl.bindTexture(gl.TEXTURE_2D, this.lipTexture);
+            safeSetUniform('u_lipTexture', (loc) => gl.uniform1i(loc, 1));
+        }
         
         // 设置人脸检测参数
         safeSetUniform('u_hasFace', (loc) => gl.uniform1i(loc, 1));
@@ -705,6 +783,10 @@ class WebGLFaceBeautyApp {
         safeSetUniform('u_saturation', (loc) => gl.uniform1f(loc, this.beautyParams.saturation));
         safeSetUniform('u_warmth', (loc) => gl.uniform1f(loc, this.beautyParams.warmth));
         
+        // 设置唇部化妆参数
+        safeSetUniform('u_lipIntensity', (loc) => gl.uniform1f(loc, this.beautyParams.lipstickIntensity));
+        safeSetUniform('u_lipstickBlendMode', (loc) => gl.uniform1i(loc, this.beautyParams.lipstickBlendMode));
+        
         // 调试输出
         console.log(`统一美颜参数:`);
         console.log(`- 瘦脸强度: ${this.beautyParams.faceSlim}`);
@@ -714,6 +796,8 @@ class WebGLFaceBeautyApp {
         console.log(`- 对比度: ${this.beautyParams.contrast}`);
         console.log(`- 饱和度: ${this.beautyParams.saturation}`);
         console.log(`- 暖色调: ${this.beautyParams.warmth}`);
+        console.log(`- 唇膏强度: ${this.beautyParams.lipstickIntensity}`);
+        console.log(`- 唇膏混合模式: ${this.beautyParams.lipstickBlendMode}`);
         console.log(`- 关键点数量: ${landmarks.length}`);
         console.log(`- 宽高比: ${aspectRatio}`);
         
@@ -722,7 +806,34 @@ class WebGLFaceBeautyApp {
         
         console.log('统一美颜渲染完成');
     }
-
+    
+    private setupGeometry(): void {
+        if (!this.gl) return;
+        
+        const gl = this.gl;
+        
+        // 全屏四边形顶点 (位置 + 纹理坐标)
+        const vertices = new Float32Array([
+            // 位置      纹理坐标
+            -1.0, -1.0,  0.0, 0.0,
+             1.0, -1.0,  1.0, 0.0,
+            -1.0,  1.0,  0.0, 1.0,
+             1.0,  1.0,  1.0, 1.0,
+        ]);
+        
+        const indices = new Uint16Array([0, 1, 2, 1, 3, 2]);
+        
+        // 创建顶点缓冲区
+        this.vertexBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.vertexBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+        
+        // 创建索引缓冲区
+        this.indexBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.indexBuffer);
+        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW);
+    }
+    
     private setupVertexAttributes(program: ShaderProgramInfo): void {
         if (!this.gl) return;
         
@@ -778,7 +889,10 @@ class WebGLFaceBeautyApp {
             'eyeEnlarge': 'eyeEnlarge',
             'faceSlim': 'faceSlim',
             'contrast': 'contrast',
-            'saturation': 'saturation'
+            'saturation': 'saturation',
+            'lipstickIntensity': 'lipstickIntensity',
+            'blushIntensity': 'blushIntensity',
+            'eyeshadowIntensity': 'eyeshadowIntensity'
         };
         
         Object.keys(controlMapping).forEach(controlId => {
@@ -794,6 +908,12 @@ class WebGLFaceBeautyApp {
                 valueDisplay.textContent = sliderValue.toString();
             }
         });
+
+        // 更新唇膏混合模式选择器
+        const lipstickBlendModeSelect = document.getElementById('lipstickBlendMode') as HTMLSelectElement;
+        if (lipstickBlendModeSelect) {
+            lipstickBlendModeSelect.value = this.beautyParams.lipstickBlendMode.toString();
+        }
 
         // 重新应用效果
         this.applyWebGLBeautyEffects();
@@ -943,7 +1063,8 @@ class WebGLFaceBeautyApp {
             'eyeEnlarge': 'eyeEnlarge',
             'faceSlim': 'faceSlim',
             'contrast': 'contrast',
-            'saturation': 'saturation'
+            'saturation': 'saturation',
+            'lipstickIntensity': 'lipstickIntensity'
         };
         
         Object.keys(controlMapping).forEach(controlId => {
@@ -957,6 +1078,12 @@ class WebGLFaceBeautyApp {
                 valueDisplay.textContent = currentValue.toString();
             }
         });
+
+        // 更新唇膏混合模式选择器
+        const lipstickBlendModeSelect = document.getElementById('lipstickBlendMode') as HTMLSelectElement;
+        if (lipstickBlendModeSelect) {
+            lipstickBlendModeSelect.value = this.beautyParams.lipstickBlendMode.toString();
+        }
     }
 
     private updateFaceInfo(): void {
@@ -1045,6 +1172,12 @@ class WebGLFaceBeautyApp {
             Object.values(this.textures).forEach(texture => {
                 if (texture) gl.deleteTexture(texture);
             });
+            
+            // 清理唇部纹理
+            if (this.lipTexture) {
+                gl.deleteTexture(this.lipTexture);
+                this.lipTexture = null;
+            }
             
             // 清理帧缓冲
             Object.values(this.framebuffers).forEach(framebuffer => {

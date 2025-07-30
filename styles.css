@@ -224,6 +224,25 @@ header p {
     margin-top: 3px;
 }
 
+/* 混合模式选择器样式 */
+.blend-mode-select {
+    width: 100%;
+    padding: 8px 12px;
+    border: 2px solid #e9ecef;
+    border-radius: 8px;
+    background: white;
+    font-size: 0.9rem;
+    color: #495057;
+    outline: none;
+    transition: all 0.3s ease;
+    margin-bottom: 5px;
+}
+
+.blend-mode-select:focus {
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
 /* 按钮样式 */
 .action-buttons {
     display: flex;
