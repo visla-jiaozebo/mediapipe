@@ -265,8 +265,8 @@ void main() {
         color = mix(color, smoothedColor, u_smoothingLevel);
     }
     
-    vec3 lipColor = texture2D(u_lipTexture, v_lipTexCoord).rgb;
-    color.rgb = applyLipMakeup(color.rgb, lipColor, u_lipIntensity , u_lipstickBlendMode);
+    // vec3 lipColor = texture2D(u_lipTexture, v_lipTexCoord).rgb;
+    // color.rgb = applyLipMakeup(color.rgb, lipColor, u_lipIntensity , u_lipstickBlendMode);
 
     // 亮度调整 (美白)
     if (u_brightness != 0.0) {
