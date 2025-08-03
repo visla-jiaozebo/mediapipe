@@ -6,11 +6,14 @@
  */
 
 // 导入样式文件
+import { OBJParser } from './obj-parser';
 import './styles.css';
 
 // 导入录制模块
 import { VideoRecorder } from './video-recorder';
 import type { RecordingOptions, RecordingCallbacks } from './video-recorder';
+import { FilesetResolver, FaceLandmarker, FaceLandmarkerResult } from "@mediapipe/tasks-vision";
+import standard_landmarks from './standard_face'; // 导入标准人脸标志点
 
 // 类型定义
 export class BeautyParams {
@@ -89,7 +92,7 @@ interface WebGLFramebuffers {
 
 
 class WebGLFaceBeautyApp {
-    private faceMesh: any = null;
+    
     private originalImage: HTMLImageElement | null = null;
     private originalCanvas: HTMLCanvasElement | null = null;
     private resultCanvas: HTMLCanvasElement | null = null;
@@ -134,9 +137,13 @@ class WebGLFaceBeautyApp {
 
     // 录制相关
     private videoRecorder: VideoRecorder | null = null;
+    private faceLandmarker: FaceLandmarker | null = null;
 
     constructor() {
         this.init();
+        OBJParser.parseOBJFile('gl/canonical_face_model.obj').then(data => {
+            console.log('OBJ文件解析完成:', data);
+        });
     }
 
     private async init(): Promise<void> {
@@ -291,13 +298,104 @@ class WebGLFaceBeautyApp {
         console.log('设置几何体...');
         this.setupGeometry();
 
-        // 创建默认唇部纹理
-        console.log('创建默认唇部纹理...');
-        await this.createDefaultLipTexture();
 
         console.log('WebGL初始化完成');
     }
 
+/**
+ * 创建全局尺寸的唇部纹理，将mouth.png映射到lipArea区域
+ */
+private async createGlobalLipTexture(landmarks: Landmark[]): Promise<void> {
+    if (!this.gl || !this.originalCanvas) return;
+
+    const gl = this.gl;
+    
+    // 计算唇部区域
+    const lipArea = {
+        left: landmarks[57].x,
+        top: 1 - landmarks[37].y,
+        right: landmarks[287].x,
+        bottom: 1 - landmarks[17].y
+    };
+
+    console.log('唇部区域:', lipArea);
+
+    const mouthImage = await this.loadMouthImage();
+    
+    if (mouthImage) {
+        const width = this.originalCanvas.width;
+        const height = this.originalCanvas.height;
+        
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = width;
+        tempCanvas.height = height;
+        const tempCtx = tempCanvas.getContext('2d');
+        
+        if (tempCtx) {
+            // 🔥 关键修复：翻转Canvas坐标系使其与WebGL一致
+            tempCtx.save();
+            tempCtx.scale(1, -1);           // Y轴翻转
+            tempCtx.translate(0, -height);  // 平移到正确位置
+
+            // 计算在画布上的像素位置（注意现在Y轴已翻转）
+            const lipPixelArea = {
+                left: Math.floor(lipArea.left * width),
+                top: Math.floor((1.0 - lipArea.bottom) * height), // 翻转Y坐标
+                right: Math.ceil(lipArea.right * width),
+                bottom: Math.ceil((1.0 - lipArea.top) * height)   // 翻转Y坐标
+            };
+
+            const lipWidth = lipPixelArea.right - lipPixelArea.left;
+            const lipHeight = lipPixelArea.bottom - lipPixelArea.top;
+
+            console.log('翻转后的唇部像素区域:', lipPixelArea, `尺寸: ${lipWidth}x${lipHeight}`);
+
+            // 将mouth.png绘制到唇部区域
+            tempCtx.drawImage(
+                mouthImage,
+                0, 0, mouthImage.width, mouthImage.height,  // 源图像
+                lipPixelArea.left, lipPixelArea.top,        // 目标位置
+                lipWidth, lipHeight                         // 目标尺寸
+            );
+
+            tempCtx.restore(); // 恢复坐标系
+
+            // 直接从canvas创建WebGL纹理
+            const globalTexture = this.createTextureFromCanvas(tempCanvas);
+            
+            // 清理旧的唇部纹理
+            if (this.lipTexture) {
+                gl.deleteTexture(this.lipTexture);
+            }
+            
+            this.lipTexture = globalTexture;
+            console.log('Y轴修正的全局唇部纹理创建成功');
+            this.debugShowGlobalLipTexture(tempCanvas);
+        }
+    }
+}
+lipImage: HTMLImageElement | null = null;
+private async loadMouthImage(): Promise<HTMLImageElement | null> {
+    if (this.lipImage) return this.lipImage;
+
+    this.lipImage = await new Promise((resolve) => {
+        const image = new Image();
+        image.crossOrigin = 'anonymous';
+        
+        image.onload = () => {
+            console.log('mouth.png加载成功:', image.width, 'x', image.height);
+            resolve(image);
+        };
+        
+        image.onerror = (e) => {
+            console.warn('无法加载 gl/mouth.png:', e);
+            resolve(null);
+        };
+        
+        image.src = 'gl/mouth.png';
+    });
+    return this.lipImage;
+}
 
     private async createDefaultLipTexture(): Promise<void> {
         if (!this.gl) return;
@@ -310,6 +408,7 @@ class WebGLFaceBeautyApp {
         await new Promise<void>((resolve, reject) => {
             image.onload = () => {
                 // 创建纹理
+                // 
                 this.lipTexture = gl.createTexture();
                 gl.bindTexture(gl.TEXTURE_2D, this.lipTexture);
                 gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
@@ -327,7 +426,7 @@ class WebGLFaceBeautyApp {
                 reject(e);
             };
 
-            image.src = 'gl/mouth.png';
+            image.src = 'gl/standard_face.webp';
         });
     }
 
@@ -370,7 +469,53 @@ class WebGLFaceBeautyApp {
 
         console.log('备用唇部纹理创建完成');
     }
+/**
+ * 调试方法：显示全局唇部纹理
+ */
+private debugShowGlobalLipTexture(tempCanvas: HTMLCanvasElement): void {
+    // 移除之前的调试canvas
+    const existingDebugCanvas = document.getElementById('debug-lip-texture');
+    if (existingDebugCanvas) {
+        existingDebugCanvas.remove();
+    }
 
+    // 创建调试显示canvas
+    const debugCanvas = document.createElement('canvas');
+    debugCanvas.id = 'debug-lip-texture';
+    debugCanvas.width = tempCanvas.width;
+    debugCanvas.height = tempCanvas.height;
+    debugCanvas.style.cssText = `
+        position: fixed;
+        top: 10px;
+        right: 10px;
+        width: 200px;
+        height: 300px;
+        border: 2px solid #ff6b6b;
+        z-index: 9999;
+        background: white;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+    `;
+    
+    const debugCtx = debugCanvas.getContext('2d');
+    if (debugCtx) {
+        // 复制全局纹理内容
+        debugCtx.drawImage(tempCanvas, 0, 0);
+        
+        // 添加标题
+        debugCtx.fillStyle = 'red';
+        debugCtx.font = '12px Arial';
+        debugCtx.fillText('Global Lip Texture', 5, 15);
+    }
+    
+    document.body.appendChild(debugCanvas);
+    
+    // 添加点击事件来隐藏/显示
+    debugCanvas.addEventListener('click', () => {
+        debugCanvas.style.display = debugCanvas.style.display === 'none' ? 'block' : 'none';
+    });
+    
+    console.log('调试纹理已显示在页面右上角');
+}
     /**
      * MediaPipe Face Mesh 唇部三角形索引
      * 基于FACEMESH_LIPS的三角形定义
@@ -442,6 +587,59 @@ FACEMESH_LIPS = frozenset([(61, 146), (146, 91), (91, 181), (181, 84), (84, 17),
             // 上唇:
             308, 291, 409, 415, 270, 310, 269, 311, 267, 312, 0, 13, 37, 82, 39, 81, 40, 80, 185, 191, 78, 61, 185
         ];
+        // {left:landmarks[57].x,top:landmarks[37].y,right:landmarks[287].x,bottom:landmarks[17].y};
+        a = [
+            // 下唇:
+            57, 61, 146,
+            61, 146, 95,
+            146, 95, 91,
+            95, 91, 88,
+            91, 88, 181,
+            88, 181, 178,
+            181, 178, 84,
+            178, 84, 87,
+            84, 87, 17,
+            87, 17, 14,
+            17, 14, 314,
+            14, 314, 317,
+            314, 317, 405,
+            317, 405, 402,
+            405, 402, 321,
+            402, 321, 318,
+            321, 318, 375,
+            318, 375, 324,
+            375, 324, 308,
+            324, 308, 291,
+            308, 291, 375,
+            291, 375,287,
+            // 上唇:
+            287,409,291,
+            409,291,408,
+            291,408,292,
+            408,292,308,
+            292,308,409,
+            308, 409, 415,
+            409, 415, 270,
+            415, 270, 310,
+            270, 310, 269,
+            310, 269, 311,
+            269, 311, 267,
+            311, 267, 312,
+            267, 312, 0,
+            312, 0, 13,
+            0, 13, 37,
+            13, 37, 82,
+            37, 82, 39,
+            82, 39, 81,
+            39, 81, 40,
+            81, 40, 80,
+            40, 80, 185,
+            80, 185, 191,
+            185, 191, 78,
+            191, 78, 61,
+            78, 61, 185,
+            61, 185,57
+        ];
         return a
     }
 
@@ -461,11 +659,21 @@ FACEMESH_LIPS = frozenset([(61, 146), (146, 91), (91, 181), (181, 84), (84, 17),
             if (typeof (window as any).FaceMesh === 'undefined') {
                 throw new Error('MediaPipe FaceMesh未加载');
             }
+              const vision = await FilesetResolver.forVisionTasks(
+                "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
+            );
 
-            this.faceMesh = new (window as any).FaceMesh({
-                locateFile: (file: string) => {
-                    return `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`;
-                }
+            this.faceLandmarker = await FaceLandmarker.createFromOptions(vision, {
+                baseOptions: {
+                modelAssetPath:
+                    "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+                delegate: "GPU",
+                },
+                outputFaceBlendshapes: false,
+                
+                outputFacialTransformationMatrixes: true,
+                runningMode: "IMAGE",
+                numFaces: 1,
             });
 
             let options = {
@@ -488,34 +696,20 @@ FACEMESH_LIPS = frozenset([(61, 146), (146, 91), (91, 181), (181, 84), (84, 17),
                 }, cameraFar: { type: 1, graphOptionXref: { calculatorType: "FaceGeometryEnvGeneratorCalculator", fieldName: "far" } }, cameraVerticalFovDegrees: { type: 1, graphOptionXref: { calculatorType: "FaceGeometryEnvGeneratorCalculator", fieldName: "vertical_fov_degrees" } }
             };
 
-            this.faceMesh.setOptions({
-                maxNumFaces: 1,
-                refineLandmarks: false,
-                minDetectionConfidence: 0.5,
-                minTrackingConfidence: 0.5,
-                enableFaceGeometry: true
-            });
+            // this.faceMesh.setOptions({
+            //     maxNumFaces: 1,
+            //     refineLandmarks: false,
+            //     minDetectionConfidence: 0.5,
+            //     minTrackingConfidence: 0.5,
+            //     enableFaceGeometry: true
+            // });
 
-            this.faceMesh.onResults(this.onFaceMeshResults.bind(this));
+            // this.faceMesh.onResults(this.onFaceMeshResults.bind(this));
             this.isMediaPipeReady = true;
             console.log('MediaPipe初始化完成');
         } catch (error) {
             console.error('MediaPipe初始化失败:', error);
             throw error;
-        }
-    }
-
-    private onFaceMeshResults(results: any): void {
-        this.faceLandmarks = results.multiFaceLandmarks || [];
-        this.updateFaceInfo();
-
-        if (this.originalImage && !this.isProcessing && this.faceLandmarks.length > 0) {
-            console.log(`检测到人脸，关键点数量: ${this.faceLandmarks[0].length}`);
-
-            // 绘制原始关键点到canvas上进行验证
-            // this.drawLandmarksOnCanvas();
-
-            this.applyWebGLBeautyEffects();
         }
     }
 
@@ -752,13 +946,26 @@ FACEMESH_LIPS = frozenset([(61, 146), (146, 91), (91, 181), (181, 84), (84, 17),
     }
 
     private async detectFace(): Promise<void> {
-        if (!this.faceMesh || !this.originalCanvas) return;
+        let results = this.faceLandmarker?.detect(this.originalImage!);
+        if (!results || !results.faceLandmarks || results.faceLandmarks.length === 0) {
+            console.warn('未检测到人脸或人脸关键点');
+            this.showError('未检测到人脸，请上传包含人脸的图片');
+            return;
+        }
+        this.faceLandmarks = results.faceLandmarks;
+        this.updateFaceInfo();
 
-        try {
-            await this.faceMesh.send({ image: this.originalCanvas });
-        } catch (error) {
-            console.error('人脸检测失败:', error);
-            this.showError('人脸检测失败，请确保图片中包含清晰的人脸');
+        // 创建默认唇部纹理
+        console.log('创建默认唇部纹理...');
+        await this.createDefaultLipTexture();
+
+        if (this.originalImage && !this.isProcessing && this.faceLandmarks.length > 0) {
+            console.log(`检测到人脸，关键点数量: ${this.faceLandmarks[0].length}`);
+
+            // 绘制原始关键点到canvas上进行验证
+            // this.drawLandmarksOnCanvas();
+
+            this.applyWebGLBeautyEffects();
         }
     }
 
@@ -955,9 +1162,9 @@ FACEMESH_LIPS = frozenset([(61, 146), (146, 91), (91, 181), (181, 84), (84, 17),
         safeSetUniform('u_aspectRatio', (loc) => gl.uniform1f(loc, aspectRatio));
 
         // 传递关键点数据
-        const facePointsX = new Float32Array(468);
-        const facePointsY = new Float32Array(468);
-        for (let i = 0; i < Math.min(landmarks.length, 468); i++) {
+        const facePointsX = new Float32Array(478);
+        const facePointsY = new Float32Array(478);
+        for (let i = 0; i < Math.min(landmarks.length, 478); i++) {
             facePointsX[i] = landmarks[i].x;
             facePointsY[i] = landmarks[i].y;
         }
@@ -1036,24 +1243,36 @@ FACEMESH_LIPS = frozenset([(61, 146), (146, 91), (91, 181), (181, 84), (84, 17),
 
                 // 原始纹理坐标
                 texCoords.push(landmark.x, 1 - landmark.y);
+                lipTexCoords.push(standard_landmarks[index].x, standard_landmarks[index].y);
 
                 // 唇部纹理坐标 (这里可以使用变换矩阵)
-                if (this.lipTransformMatrix) {
-                    const transformed = this.transformPoint(landmark.x, landmark.y, this.lipTransformMatrix);
-                    lipTexCoords.push(transformed.x, transformed.y);
-                } else {
-                    // 备用：简单的边界框映射
-                    lipTexCoords.push(landmark.x, 1 - landmark.y);
-                }
+                // if (this.lipTransformMatrix) {
+                //     const transformed = this.transformPoint(landmark.x, landmark.y, this.lipTransformMatrix);
+                //     lipTexCoords.push(transformed.x, transformed.y);
+                // } else {
+                //     // 备用：简单的边界框映射
+                //     lipTexCoords.push(landmark.x, 1 - landmark.y);
+                // }
             }
         }
+        let lipArea = {left:landmarks[57].x,top:landmarks[37].y,right:landmarks[287].x,bottom:landmarks[17].y};
 
         // 生成索引
-        const indices: number[] = [];
+        let indices: number[] = [];
         for (let i = 0; i < triangleIndices.length; i += 3) {
             indices.push(i, i + 1, i + 2);
         }
-
+        if (false ){
+            indices = [0, 1, 2, 1, 3, 2]; // 全屏四边形索引
+            return {
+                vertices: new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), // 全屏四边形顶点,
+                texCoords: new Float32Array([0, 1, 1, 1, 0, 0, 1, 0]), // 全屏四边形纹理坐标
+                lipTexCoords: new Float32Array([0, 1, 1, 1, 0, 0, 1, 0]), // 全屏四边形唇部纹理坐标
+                indices: new Uint16Array(indices)
+            };
+        }
+    
+        
         return {
             vertices: new Float32Array(vertices),
             texCoords: new Float32Array(texCoords),
@@ -1535,9 +1754,9 @@ FACEMESH_LIPS = frozenset([(61, 146), (146, 91), (91, 181), (181, 84), (84, 17),
         }
 
         // 清理MediaPipe
-        if (this.faceMesh) {
-            this.faceMesh.close();
-            this.faceMesh = null;
+        if (this.faceLandmarker) {
+            this.faceLandmarker.close();
+            this.faceLandmarker = null;
         }
 
         console.log('资源清理完成');

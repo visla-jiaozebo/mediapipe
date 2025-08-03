@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Canonical Face Model OBJ 解析测试</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+            background: #f0f0f0;
+        }
+        
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        
+        .results {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 5px;
+            font-family: monospace;
+            white-space: pre-wrap;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        
+        button:hover {
+            background: #0056b3;
+        }
+        
+        .vertex-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 10px 0;
+        }
+        
+        .vertex-table th, .vertex-table td {
+            border: 1px solid #ddd;
+            padding: 5px;
+            text-align: center;
+        }
+        
+        .vertex-table th {
+            background: #f8f9fa;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🗿 Canonical Face Model OBJ 解析测试</h1>
+        
+        <div class="test-section">
+            <h3>解析控制</h3>
+            <button onclick="loadAndParseOBJ()">解析 canonical_face_model.obj</button>
+            <button onclick="showLipVertices()">显示唇部顶点</button>
+            <button onclick="showEyeVertices()">显示眼部顶点</button>
+            <button onclick="showAllVertices()">显示所有顶点（前20个）</button>
+            <button onclick="exportToJSON()">导出JSON数据</button>
+        </div>
+        
+        <div class="test-section">
+            <h3>解析结果</h3>
+            <div id="parseResults" class="results">等待解析...</div>
+        </div>
+        
+        <div class="test-section">
+            <h3>顶点数据表格</h3>
+            <table id="vertexTable" class="vertex-table" style="display: none;">
+                <thead>
+                    <tr>
+                        <th>索引</th>
+                        <th>原始X</th>
+                        <th>原始Y</th>
+                        <th>原始Z</th>
+                        <th>标准化X</th>
+                        <th>标准化Y</th>
+                        <th>标准化Z</th>
+                    </tr>
+                </thead>
+                <tbody id="vertexTableBody">
+                </tbody>
+            </table>
+        </div>
+        
+        <div class="test-section">
+            <h3>3D坐标可视化</h3>
+            <canvas id="visualCanvas" width="400" height="300" style="border: 1px solid #ddd;"></canvas>
+            <p>简单的2D投影显示顶点分布</p>
+        </div>
+    </div>
+
+    <!-- 导入我们的OBJ解析器 -->
+    <script type="module">
+        // 直接嵌入OBJ解析逻辑，避免模块导入问题
+        class OBJParser {
+            static async parseOBJFile(filePath) {
+                try {
+                    const response = await fetch(filePath);
+                    const objContent = await response.text();
+                    return this.parseOBJContent(objContent);
+                } catch (error) {
+                    console.error('Failed to load OBJ file:', error);
+                    throw error;
+                }
+            }
+            
+            static parseOBJContent(objContent) {
+                const lines = objContent.split('\n');
+                const rawVertices = [];
+                
+                // 解析顶点
+                for (const line of lines) {
+                    const trimmedLine = line.trim();
+                    
+                    if (trimmedLine.startsWith('v ')) {
+                        const parts = trimmedLine.split(/\s+/);
+                        if (parts.length >= 4) {
+                            const x = parseFloat(parts[1]);
+                            const y = parseFloat(parts[2]);
+                            const z = parseFloat(parts[3]);
+                            
+                            if (!isNaN(x) && !isNaN(y) && !isNaN(z)) {
+                                rawVertices.push({ x, y, z });
+                            }
+                        }
+                    }
+                }
+                
+                if (rawVertices.length === 0) {
+                    throw new Error('No vertices found in OBJ file');
+                }
+                
+                // 计算边界框
+                const bounds = this.calculateBounds(rawVertices);
+                
+                // 标准化顶点到[0,1]范围
+                const normalizedVertices = this.normalizeVertices(rawVertices, bounds);
+                
+                // 转换为Float32Array
+                const originalVerticesArray = new Float32Array(rawVertices.length * 3);
+                const normalizedVerticesArray = new Float32Array(rawVertices.length * 3);
+                
+                for (let i = 0; i < rawVertices.length; i++) {
+                    originalVerticesArray[i * 3] = rawVertices[i].x;
+                    originalVerticesArray[i * 3 + 1] = rawVertices[i].y;
+                    originalVerticesArray[i * 3 + 2] = rawVertices[i].z;
+                    
+                    normalizedVerticesArray[i * 3] = normalizedVertices[i].x;
+                    normalizedVerticesArray[i * 3 + 1] = normalizedVertices[i].y;
+                    normalizedVerticesArray[i * 3 + 2] = normalizedVertices[i].z;
+                }
+                
+                return {
+                    vertices: normalizedVerticesArray,
+                    originalVertices: originalVerticesArray,
+                    bounds: bounds,
+                    vertexCount: rawVertices.length,
+                    rawVertices: rawVertices,
+                    normalizedVertices: normalizedVertices
+                };
+            }
+            
+            static calculateBounds(vertices) {
+                const first = vertices[0];
+                const bounds = {
+                    min: { x: first.x, y: first.y, z: first.z },
+                    max: { x: first.x, y: first.y, z: first.z }
+                };
+                
+                for (const vertex of vertices) {
+                    bounds.min.x = Math.min(bounds.min.x, vertex.x);
+                    bounds.min.y = Math.min(bounds.min.y, vertex.y);
+                    bounds.min.z = Math.min(bounds.min.z, vertex.z);
+                    
+                    bounds.max.x = Math.max(bounds.max.x, vertex.x);
+                    bounds.max.y = Math.max(bounds.max.y, vertex.y);
+                    bounds.max.z = Math.max(bounds.max.z, vertex.z);
+                }
+                
+                return bounds;
+            }
+            
+            static normalizeVertices(vertices, bounds) {
+                const sizeX = bounds.max.x - bounds.min.x;
+                const sizeY = bounds.max.y - bounds.min.y;
+                const sizeZ = bounds.max.z - bounds.min.z;
+                
+                const safeSize = {
+                    x: sizeX || 1,
+                    y: sizeY || 1,
+                    z: sizeZ || 1
+                };
+                
+                return vertices.map(vertex => ({
+                    x: (vertex.x - bounds.min.x) / safeSize.x,
+                    y: (vertex.y - bounds.min.y) / safeSize.y,
+                    z: (vertex.z - bounds.min.z) / safeSize.z
+                }));
+            }
+        }
+        
+        // 全局变量存储解析结果
+        let parsedOBJData = null;
+        
+        // 解析函数
+        window.loadAndParseOBJ = async function() {
+            const resultsDiv = document.getElementById('parseResults');
+            resultsDiv.textContent = '正在解析...';
+            
+            try {
+                parsedOBJData = await OBJParser.parseOBJFile('gl/canonical_face_model.obj');
+                
+                let output = '=== OBJ 解析成功 ===\n';
+                output += `顶点数量: ${parsedOBJData.vertexCount}\n`;
+                output += `原始边界框:\n`;
+                output += `  X: ${parsedOBJData.bounds.min.x.toFixed(3)} ~ ${parsedOBJData.bounds.max.x.toFixed(3)}\n`;
+                output += `  Y: ${parsedOBJData.bounds.min.y.toFixed(3)} ~ ${parsedOBJData.bounds.max.y.toFixed(3)}\n`;
+                output += `  Z: ${parsedOBJData.bounds.min.z.toFixed(3)} ~ ${parsedOBJData.bounds.max.z.toFixed(3)}\n\n`;
+                
+                output += '前10个顶点对比:\n';
+                for (let i = 0; i < Math.min(10, parsedOBJData.vertexCount); i++) {
+                    const orig = parsedOBJData.rawVertices[i];
+                    const norm = parsedOBJData.normalizedVertices[i];
+                    output += `${i}: (${orig.x.toFixed(3)}, ${orig.y.toFixed(3)}, ${orig.z.toFixed(3)}) → (${norm.x.toFixed(3)}, ${norm.y.toFixed(3)}, ${norm.z.toFixed(3)})\n`;
+                }
+                
+                resultsDiv.textContent = output;
+                visualizeVertices();
+                
+            } catch (error) {
+                resultsDiv.textContent = `解析失败: ${error.message}`;
+            }
+        };
+        
+        window.showLipVertices = function() {
+            if (!parsedOBJData) {
+                alert('请先解析OBJ文件');
+                return;
+            }
+            
+            // MediaPipe唇部关键点索引
+            const lipIndices = [61, 84, 17, 314, 405, 320, 307, 375, 321, 308, 324, 291];
+            showVerticesTable(lipIndices, '唇部');
+        };
+        
+        window.showEyeVertices = function() {
+            if (!parsedOBJData) {
+                alert('请先解析OBJ文件');
+                return;
+            }
+            
+            // 眼部关键点索引
+            const eyeIndices = [33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158, 159, 160];
+            showVerticesTable(eyeIndices, '眼部');
+        };
+        
+        window.showAllVertices = function() {
+            if (!parsedOBJData) {
+                alert('请先解析OBJ文件');
+                return;
+            }
+            
+            const indices = Array.from({length: 20}, (_, i) => i);
+            showVerticesTable(indices, '所有顶点（前20个）');
+        };
+        
+        function showVerticesTable(indices, title) {
+            const table = document.getElementById('vertexTable');
+            const tbody = document.getElementById('vertexTableBody');
+            
+            tbody.innerHTML = '';
+            
+            for (const index of indices) {
+                if (index < parsedOBJData.vertexCount) {
+                    const orig = parsedOBJData.rawVertices[index];
+                    const norm = parsedOBJData.normalizedVertices[index];
+                    
+                    const row = tbody.insertRow();
+                    row.insertCell(0).textContent = index;
+                    row.insertCell(1).textContent = orig.x.toFixed(3);
+                    row.insertCell(2).textContent = orig.y.toFixed(3);
+                    row.insertCell(3).textContent = orig.z.toFixed(3);
+                    row.insertCell(4).textContent = norm.x.toFixed(3);
+                    row.insertCell(5).textContent = norm.y.toFixed(3);
+                    row.insertCell(6).textContent = norm.z.toFixed(3);
+                }
+            }
+            
+            table.style.display = 'table';
+            table.querySelector('caption')?.remove();
+            const caption = table.createCaption();
+            caption.textContent = title;
+        }
+        
+        function visualizeVertices() {
+            const canvas = document.getElementById('visualCanvas');
+            const ctx = canvas.getContext('2d');
+            
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            if (!parsedOBJData) return;
+            
+            // 简单的2D投影：使用X-Y坐标，忽略Z
+            ctx.fillStyle = '#007bff';
+            
+            for (let i = 0; i < Math.min(100, parsedOBJData.vertexCount); i++) {
+                const norm = parsedOBJData.normalizedVertices[i];
+                const x = norm.x * canvas.width;
+                const y = norm.y * canvas.height;
+                
+                ctx.beginPath();
+                ctx.arc(x, y, 2, 0, 2 * Math.PI);
+                ctx.fill();
+            }
+        }
+        
+        window.exportToJSON = function() {
+            if (!parsedOBJData) {
+                alert('请先解析OBJ文件');
+                return;
+            }
+            
+            const exportData = {
+                vertexCount: parsedOBJData.vertexCount,
+                bounds: parsedOBJData.bounds,
+                normalizedVertices: Array.from(parsedOBJData.vertices),
+                originalVertices: Array.from(parsedOBJData.originalVertices)
+            };
+            
+            const dataStr = JSON.stringify(exportData, null, 2);
+            const dataBlob = new Blob([dataStr], {type: 'application/json'});
+            
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(dataBlob);
+            link.download = 'canonical_face_model_parsed.json';
+            link.click();
+        };
+        
+        // 页面加载完成后自动解析
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('页面加载完成，准备解析OBJ文件...');
+        });
+        
+    </script>
+</body>
+</html>

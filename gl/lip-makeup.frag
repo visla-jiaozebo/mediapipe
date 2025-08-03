@@ -41,12 +41,13 @@ void main() {
     // baseColor = vec4(v_texCoord.x, v_texCoord.y, 0.0, 1.0); // 调试用，显示纹理坐标
     
     // 从唇膏纹理采样
-    vec3 lipColor = texture2D(u_lipTexture, v_lipTexCoord).rgb;
+    vec4 lipColor = texture2D(u_lipTexture, v_lipTexCoord);
+    // lipColor.a = 1.0; // 确保唇膏颜色的透明度为1.0
     // 固定唇膏颜色为红色
-    // vec3 lipColor = vec3(1.0, 1.0, 0.0); // 红色唇膏
-    
+    // vec4 lipColor = vec4(1.0, 1.0, 0.0, 1.0); // 红色唇膏
+
     // 应用唇膏效果
-    vec3 finalColor = applyLipMakeup(baseColor.rgb, lipColor, u_lipIntensity, u_lipstickBlendMode);
+    vec3 finalColor = applyLipMakeup(baseColor.rgb, lipColor.rgb, u_lipIntensity, u_lipstickBlendMode);
     
     gl_FragColor = vec4(finalColor, baseColor.a);
     // gl_FragColor = baseColor;
