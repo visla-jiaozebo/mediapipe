@@ -47,6 +47,7 @@ module.exports = {
     new CopyWebpackPlugin({
       patterns: [
         { from: 'gl', to: 'gl' },
+        { from: 'res', to: 'res' },
         { from: 'demo.png', to: 'demo.png', noErrorOnMissing: true },
         { from: 'demo1.png', to: 'demo1.png', noErrorOnMissing: true },
         { from: 'favicon.svg', to: 'favicon.svg', noErrorOnMissing: true },
@@ -58,10 +59,6 @@ module.exports = {
     static: [
       {
         directory: path.join(__dirname, '.'),
-      },
-      {
-        directory: path.join(__dirname, 'gl'),
-        publicPath: '/gl',
       },
     ],
     compress: true,

@@ -203,8 +203,57 @@ float drawBorder(vec2 uv, vec2 center, float radius, float thickness) {
     return smoothstep(radius - thickness, radius, dist) - smoothstep(radius, radius + thickness, dist);
 }
 
-    // 高质量双边滤波磨皮
+// OpenCV风格的双边滤波实现
+vec4 bilateralFilterOpenCV(sampler2D tex, vec2 uv, vec2 texelSize, float sigmaColor, float sigmaSpace) {
+    vec4 center = texture2D(tex, uv);
+    vec4 result = vec4(0.0);
+    float totalWeight = 0.0;
+    
+    // 预计算σ的平方值，避免重复计算
+    float sigmaColorSq2 = 2.0 * sigmaColor * sigmaColor;
+    float sigmaSpaceSq2 = 2.0 * sigmaSpace * sigmaSpace;
+
+    // 🔧 修复：使用固定的循环范围，但通过距离判断来模拟动态核大小
+    float maxRadius = sigmaSpace * 2.0;
+    
+    for(int x = -7; x <= 7; x++) {
+        for(int y = -7; y <= 7; y++) {
+            // 计算当前采样点的距离
+            float spatialDistSq = float(x*x + y*y);
+            float spatialDist = sqrt(spatialDistSq);
+            
+            // 如果超出动态核大小范围，跳过这个采样点
+            if(spatialDist > maxRadius) continue;
+
+            vec2 offset = vec2(float(x), float(y)) * texelSize;
+            vec4 sample = texture2D(tex, uv + offset);
+            
+            // 空间权重 (基于欧式距离)
+            float spatialWeight = exp(-spatialDistSq / sigmaSpaceSq2);
+            
+            // 颜色权重 (在RGB空间计算)
+            vec3 colorDiff = sample.rgb - center.rgb;
+            float colorDistSq = dot(colorDiff, colorDiff);
+            float colorWeight = exp(-colorDistSq / sigmaColorSq2);
+            
+            float weight = spatialWeight * colorWeight;
+            result += sample * weight;
+            totalWeight += weight;
+        }
+    }
+    
+    return result / totalWeight;
+}
+// 替换原来的bilateralFilter函数
 vec4 bilateralFilter(sampler2D tex, vec2 uv, vec2 texelSize) {
+    // 根据磨皮强度自适应调整参数
+    float adaptiveSigmaColor = mix(1.0, 200.0, u_smoothingLevel);  // 颜色阈值
+    float adaptiveSigmaSpace = mix(1.0, 200.0, u_smoothingLevel);    // 空间阈值
+    
+    return bilateralFilterOpenCV(tex, uv, texelSize, adaptiveSigmaColor, adaptiveSigmaSpace);
+}
+    // 高质量双边滤波磨皮
+vec4 bilateralFilter1(sampler2D tex, vec2 uv, vec2 texelSize) {
     vec4 center = texture2D(tex, uv);
     vec4 result = center;
     float totalWeight = 1.0;
