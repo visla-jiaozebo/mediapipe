@@ -140,6 +140,12 @@ class WebGLFaceBeautyApp {
     private faceLandmarker: FaceLandmarker | null = null;
     private standardLandmarks: StandardFaceLandmark | null = null;
 
+    // 相机相关
+    private videoElement: HTMLVideoElement | null = null;
+    private cameraStream: MediaStream | null = null;
+    private animationFrameId: number | null = null;
+    private isCameraActive: boolean = false;
+
     constructor() {
         this.init();
     }
@@ -998,6 +1004,22 @@ FACEMESH_LIPS = frozenset([(61, 146), (146, 91), (91, 181), (181, 84), (84, 17),
                 this.downloadResult();
             });
         }
+
+        // 相机控制按钮
+        const startCameraBtn = document.getElementById('startCameraBtn');
+        const stopCameraBtn = document.getElementById('stopCameraBtn');
+        
+        if (startCameraBtn) {
+            startCameraBtn.addEventListener('click', () => {
+                this.startCamera();
+            });
+        }
+        
+        if (stopCameraBtn) {
+            stopCameraBtn.addEventListener('click', () => {
+                this.stopCamera();
+            });
+        }
     }
 
     private async processImageFile(file: File): Promise<void> {
@@ -1109,52 +1131,7 @@ FACEMESH_LIPS = frozenset([(61, 146), (146, 91), (91, 181), (181, 84), (84, 17),
         }
         // ctx.clearRect(0, 0, this.originalCanvas.width, this.originalCanvas.height);
         const landmarks = this.faceLandmarks[0];
-
         let lips_points = new Set<number>();
-        let li = [270, 409,
-            317, 402,
-            81, 82,
-            91, 181,
-            37, 0,
-            84, 17,
-            269, 270,
-            321, 375,
-            318, 324,
-            312, 311,
-            415, 308,
-            17, 314,
-            61, 146,
-            78, 95,
-            0, 267,
-            82, 13,
-            314, 405,
-            178, 87,
-            267, 269,
-            61, 185,
-            14, 317,
-            88, 178,
-            185, 40,
-            405, 321,
-            13, 312,
-            324, 308,
-            409, 291,
-            146, 91,
-            87, 14,
-            78, 191,
-            95, 88,
-            311, 310,
-            39, 37,
-            40, 39,
-            402, 318,
-            191, 80,
-            80, 81,
-            310, 415,
-            181, 84,
-            375, 291,]
-        for (let i of li) {
-            lips_points.add(i);
-        }
-        lips_points.clear();
         let lips_indices = this.getLipTriangleIndices();
         for (let i = 0; i < lips_indices.length; i++) {
             lips_points.add(lips_indices[i]);
@@ -1166,7 +1143,7 @@ FACEMESH_LIPS = frozenset([(61, 146), (146, 91), (91, 181), (181, 84), (84, 17),
             }
             const landmark = landmarks[i];
             if (landmark) {
-                ctx.fillStyle = this.getLandmarkColor(i);
+                ctx.fillStyle = '#ff0000';
                 ctx.strokeStyle = '#ffffff';
                 ctx.beginPath();
                 ctx.strokeText(`${i}`, landmark.x * this.originalCanvas.width, landmark.y * this.originalCanvas.height - 5);
@@ -1175,11 +1152,6 @@ FACEMESH_LIPS = frozenset([(61, 146), (146, 91), (91, 181), (181, 84), (84, 17),
             }
         }
         console.log('关键点已绘制到原始画布上');
-    }
-
-    private getLandmarkColor(index: number): string {
-        // ... 实现保持不变，返回颜色字符串
-        return '#ff0000'; // 简化实现
     }
 
     private applyWebGLBeautyEffects(): void {
@@ -1862,6 +1834,235 @@ FACEMESH_LIPS = frozenset([(61, 146), (146, 91), (91, 181), (181, 84), (84, 17),
             }, 3000);
         }
     }
+
+    /**
+     * 启动相机
+     */
+    private async startCamera(): Promise<void> {
+        try {
+            this.showLoading(true, '正在启动相机...');
+            
+            // 停止之前的相机流
+            if (this.cameraStream) {
+                this.stopCamera();
+            }
+
+            // 请求相机权限
+            const constraints: MediaStreamConstraints = {
+                video: {
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 },
+                    facingMode: 'user' // 前置摄像头
+                },
+                audio: false
+            };
+
+            this.cameraStream = await navigator.mediaDevices.getUserMedia(constraints);
+            
+            // 创建或获取video元素
+            if (!this.videoElement) {
+                this.videoElement = document.createElement('video');
+                this.videoElement.autoplay = true;
+                this.videoElement.playsInline = true;
+                this.videoElement.muted = true;
+                this.videoElement.style.display = 'none';
+                document.body.appendChild(this.videoElement);
+            }
+
+            // 设置视频流
+            this.videoElement.srcObject = this.cameraStream;
+            
+            // 等待视频开始播放
+            await new Promise<void>((resolve, reject) => {
+                this.videoElement!.onloadedmetadata = () => {
+                    this.videoElement!.play()
+                        .then(() => resolve())
+                        .catch(reject);
+                };
+                this.videoElement!.onerror = reject;
+            });
+
+            // 更新按钮状态
+            this.updateCameraButtonStates(true);
+            
+            // 开始实时处理
+            this.isCameraActive = true;
+            this.startCameraProcessing();
+            
+            this.showLoading(false);
+            this.showSuccess('📷 相机启动成功，开始实时美颜处理！');
+            
+        } catch (error) {
+            console.error('启动相机失败:', error);
+            this.showLoading(false);
+            this.showError('启动相机失败: ' + (error as Error).message);
+            this.updateCameraButtonStates(false);
+        }
+    }
+
+    /**
+     * 停止相机
+     */
+    private stopCamera(): void {
+        try {
+            // 停止动画帧
+            if (this.animationFrameId) {
+                cancelAnimationFrame(this.animationFrameId);
+                this.animationFrameId = null;
+            }
+
+            // 停止相机流
+            if (this.cameraStream) {
+                this.cameraStream.getTracks().forEach(track => {
+                    track.stop();
+                });
+                this.cameraStream = null;
+            }
+
+            // 清理video元素
+            if (this.videoElement) {
+                this.videoElement.srcObject = null;
+                this.videoElement.remove();
+                this.videoElement = null;
+            }
+
+            this.isCameraActive = false;
+            this.updateCameraButtonStates(false);
+            this.showSuccess('📷 相机已停止');
+            
+        } catch (error) {
+            console.error('停止相机失败:', error);
+            this.showError('停止相机失败: ' + (error as Error).message);
+        }
+    }
+
+    /**
+     * 开始相机处理循环
+     */
+    private startCameraProcessing(): void {
+        if (!this.isCameraActive || !this.videoElement || !this.originalCanvas) {
+            return;
+        }
+
+        const processFrame = async () => {
+            try {
+                if (!this.isCameraActive || !this.videoElement || !this.originalCanvas) {
+                    return;
+                }
+
+                // 检查video是否准备好
+                if (this.videoElement.readyState >= 2) {
+                    await this.drawCameraFrameToCanvas();
+                    await this.detectFaceFromCamera();
+                }
+
+                // 继续下一帧
+                this.animationFrameId = requestAnimationFrame(processFrame);
+                
+            } catch (error) {
+                console.error('相机帧处理失败:', error);
+                // 继续处理，不中断相机流
+                this.animationFrameId = requestAnimationFrame(processFrame);
+            }
+        };
+
+        // 开始处理循环
+        this.animationFrameId = requestAnimationFrame(processFrame);
+    }
+
+    /**
+     * 将相机帧绘制到originalCanvas
+     */
+    private async drawCameraFrameToCanvas(): Promise<void> {
+        if (!this.videoElement || !this.originalCanvas) return;
+
+        const canvas = this.originalCanvas;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+
+        // 设置canvas尺寸匹配视频
+        const videoWidth = this.videoElement.videoWidth;
+        const videoHeight = this.videoElement.videoHeight;
+        
+        if (videoWidth === 0 || videoHeight === 0) return;
+
+        // 保持显示尺寸控制
+        const maxDisplayWidth = 400;
+        const maxDisplayHeight = 300;
+        const displayScale = Math.min(maxDisplayWidth / videoWidth, maxDisplayHeight / videoHeight);
+
+        // 设置canvas实际分辨率为视频分辨率
+        canvas.width = videoWidth;
+        canvas.height = videoHeight;
+
+        // 设置canvas显示尺寸
+        canvas.style.width = `${videoWidth * displayScale}px`;
+        canvas.style.height = `${videoHeight * displayScale}px`;
+
+        // 水平翻转相机画面（镜像效果）
+        ctx.save();
+        ctx.scale(-1, 1);
+        ctx.translate(-videoWidth, 0);
+        
+        // 绘制视频帧
+        ctx.drawImage(this.videoElement, 0, 0, videoWidth, videoHeight);
+        
+        ctx.restore();
+    }
+
+    /**
+     * 从相机帧检测人脸
+     */
+    private async detectFaceFromCamera(): Promise<void> {
+        if (!this.faceLandmarker || !this.originalCanvas) return;
+
+        try {
+            // 从canvas检测人脸
+            const results = this.faceLandmarker.detect(this.originalCanvas);
+            
+            if (results && results.faceLandmarks && results.faceLandmarks.length > 0) {
+                this.faceLandmarks = results.faceLandmarks;
+                this.updateFaceInfo();
+
+                // 创建唇部纹理（如果还没有）
+                if (!this.lipTexture && this.faceLandmarks.length > 0) {
+                    await this.createGlobalLipTexture(this.faceLandmarks[0]);
+                }
+
+                // 应用实时美颜效果
+                if (!this.isProcessing) {
+                    this.applyWebGLBeautyEffects();
+                }
+            } else {
+                // 没有检测到人脸，清空面部信息
+                this.faceLandmarks = [];
+                this.updateFaceInfo();
+            }
+            
+        } catch (error) {
+            console.error('相机人脸检测失败:', error);
+            // 不显示错误信息，避免频繁提示
+        }
+    }
+
+    /**
+     * 更新相机按钮状态
+     */
+    private updateCameraButtonStates(cameraActive: boolean): void {
+        const startCameraBtn = document.getElementById('startCameraBtn') as HTMLButtonElement;
+        const stopCameraBtn = document.getElementById('stopCameraBtn') as HTMLButtonElement;
+
+        if (startCameraBtn) {
+            startCameraBtn.disabled = cameraActive;
+            startCameraBtn.textContent = cameraActive ? '📷 相机运行中' : '📷 启动相机';
+        }
+
+        if (stopCameraBtn) {
+            stopCameraBtn.disabled = !cameraActive;
+            stopCameraBtn.textContent = cameraActive ? '⏹️ 停止相机' : '⏹️ 相机已停止';
+        }
+    }
+
 
     /**
      * 清理资源

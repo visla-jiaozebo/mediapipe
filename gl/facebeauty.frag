@@ -54,7 +54,7 @@ vec2 curveWarp(vec2 texCoord, vec4 pos, float delta) {
     float distanceToOrigin = length(adjustedTexCoord - adjustedOrigin);
 
         // 影响半径 - 基于目标距离
-    float influenceRadius = maxDistance * 1.5;
+    float influenceRadius = maxDistance * 0.5;
 
     if(distanceToOrigin < influenceRadius && distanceToOrigin > 0.0) {
             // 计算变形强度
@@ -105,7 +105,7 @@ vec2 thinFace(vec2 currentCoord) {
         // 基于FACEMESH_FACE_OVAL的正确关键点索引
         // 左脸颊轮廓关键点 (面部椭圆左侧)
         // vec2 leftCheek1 = vec2(u_facePointsX[162], u_facePointsY[162]);
-    vec4 leftCheek2 = vec4(u_facePointsX[127], u_facePointsY[127], u_facePointsX[6], u_facePointsY[6]);
+    // vec4 leftCheek2 = vec4(u_facePointsX[127], u_facePointsY[127], u_facePointsX[6], u_facePointsY[6]);
     vec4 leftCheek3 = vec4(u_facePointsX[234], u_facePointsY[234], u_facePointsX[5], u_facePointsY[5]);
     vec4 leftCheek4 = vec4(u_facePointsX[93], u_facePointsY[93], u_facePointsX[4], u_facePointsY[4]);
     vec4 leftCheek5 = vec4(u_facePointsX[132], u_facePointsY[132], u_facePointsX[164], u_facePointsY[164]);
@@ -118,7 +118,7 @@ vec2 thinFace(vec2 currentCoord) {
 
         // 右脸颊轮廓关键点 (面部椭圆右侧)
         // vec2 rightCheek1 = vec2(u_facePointsX[389], u_facePointsY[389]);  // 454 - 右颞区
-    vec4 rightCheek2 = vec4(u_facePointsX[356], u_facePointsY[356], u_facePointsX[6], u_facePointsY[6]);  // 356 - 右脸颊上部
+    // vec4 rightCheek2 = vec4(u_facePointsX[356], u_facePointsY[356], u_facePointsX[6], u_facePointsY[6]);  // 356 - 右脸颊上部
     vec4 rightCheek3 = vec4(u_facePointsX[454], u_facePointsY[454], u_facePointsX[195], u_facePointsY[195]);  // 389 - 右脸颊中部  
     vec4 rightCheek4 = vec4(u_facePointsX[323], u_facePointsY[323], u_facePointsX[4], u_facePointsY[4]);  // 251 - 右脸颊下部
     vec4 rightCheek5 = vec4(u_facePointsX[401], u_facePointsY[401], u_facePointsX[164], u_facePointsY[164]);  // 251 - 右脸颊下部
@@ -137,7 +137,7 @@ vec2 thinFace(vec2 currentCoord) {
 
     // 左脸向中心收缩 - 使用Face Oval的准确关键点
     // currentCoord = curveWarpVec2(currentCoord, leftCheek2, faceCenter, u_thinFaceDelta);
-    currentCoord = curveWarp(currentCoord, leftCheek2, u_thinFaceDelta);
+    // currentCoord = curveWarp(currentCoord, leftCheek2, u_thinFaceDelta);
     currentCoord = curveWarp(currentCoord, leftCheek3, u_thinFaceDelta);
     currentCoord = curveWarp(currentCoord, leftCheek4, u_thinFaceDelta);
     currentCoord = curveWarp(currentCoord, leftCheek5, u_thinFaceDelta);
@@ -149,7 +149,7 @@ vec2 thinFace(vec2 currentCoord) {
 
         // 右脸向中心收缩 - 使用Face Oval的准确关键点
         // currentCoord = curveWarp(currentCoord, rightCheek1, u_thinFaceDelta);
-    currentCoord = curveWarp(currentCoord, rightCheek2, u_thinFaceDelta);
+    // currentCoord = curveWarp(currentCoord, rightCheek2, u_thinFaceDelta);
     currentCoord = curveWarp(currentCoord, rightCheek3, u_thinFaceDelta);
     currentCoord = curveWarp(currentCoord, rightCheek4, u_thinFaceDelta);
     currentCoord = curveWarp(currentCoord, rightCheek5, u_thinFaceDelta);
