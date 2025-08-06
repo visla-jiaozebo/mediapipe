@@ -124,6 +124,11 @@ class WebGLFaceBeautyApp {
 
     // 唇部纹理
     private lipTexture: WebGLTexture | null = null;
+    private lookupGray: WebGLTexture | null = null;
+    private lookupLight: WebGLTexture | null = null;
+    private lookupCustom: WebGLTexture | null = null;
+    private lookupOrigin: WebGLTexture | null = null;
+    private lookupSkin: WebGLTexture | null = null;
 
     // 唇部变换矩阵
     private lipTransformMatrix: Float32Array | null = null;
@@ -288,6 +293,9 @@ class WebGLFaceBeautyApp {
         if (!this.gl) {
             throw new Error('WebGL不支持');
         }
+        if (!this.standardLandmarks?.path) {
+            throw new Error('Error to load standard landmarks');
+        }
         console.log('WebGL上下文创建成功');
         // original-picture
         this.programs.originalPicture = await this.createShaderProgramWithPath('gl/original-picture.vert', 'gl/original-picture.frag');
@@ -297,42 +305,41 @@ class WebGLFaceBeautyApp {
         this.programs.differ = await this.createShaderProgramWithPath('gl/differ.vert', 'gl/differ.frag');
         this.programs.reshape = await this.createShaderProgramWithPath('gl/reshape.vert', 'gl/reshape.frag');
         console.log('shader编译成功');
-        await this.createDefaultLipTexture();
+        this.lipTexture = await this.textureFromImage(this.standardLandmarks?.path);
+        this.lookupGray = await this.textureFromImage("/res/img/lookup_gray.png");
+        this.lookupLight = await this.textureFromImage("/res/img/lookup_light.png");
+        this.lookupCustom = await this.textureFromImage("/res/img/lookup_custom.png");
+        this.lookupOrigin = await this.textureFromImage("/res/img/lookup_origin.png");
+        this.lookupSkin = await this.textureFromImage("/res/img/lookup_skin.png");
         console.log('创建默认唇部纹理 done...');
     }
 
-    private async createDefaultLipTexture(): Promise<void> {
-        if (!this.gl) return;
+    private async textureFromImage(imagePath: string): Promise<WebGLTexture> {
+        if (!this.gl) throw new Error('WebGL initialization failed');
 
         const gl = this.gl;
         // 加载 gl/mouth.png 图片文件
         const image = new Image();
         image.crossOrigin = 'anonymous';
 
-        await new Promise<void>((resolve, reject) => {
+        return new Promise<WebGLTexture>((resolve, reject) => {
             image.onload = () => {
                 // 创建纹理
                 // 
-                this.lipTexture = gl.createTexture();
-                gl.bindTexture(gl.TEXTURE_2D, this.lipTexture);
+                let txt = gl.createTexture();
+                gl.bindTexture(gl.TEXTURE_2D, txt);
                 gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
                 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
                 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
                 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
                 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-
-                console.log('唇部纹理从 gl/mouth.png 加载完成');
-                resolve();
+                resolve(txt);
             };
 
             image.onerror = (e) => {
-                console.warn('无法加载 gl/mouth.');
                 reject(e);
             };
-            if (!this.standardLandmarks?.path) {
-                throw new Error('Error to load standard landmarks');
-            }
-            image.src = this.standardLandmarks?.path;
+            image.src = imagePath;
         });
     }
 
@@ -413,7 +420,7 @@ class WebGLFaceBeautyApp {
                 this.showSuccess('✅ 系统就绪，请上传图片开始美颜处理！');
             };
 
-            img.src = 'demo.png';
+            img.src = '/res/img/me.png';
         } catch (error) {
             console.error('Demo图片加载失败:', error);
             this.showSuccess('✅ 系统就绪，请上传图片开始美颜处理！');
@@ -754,15 +761,15 @@ class WebGLFaceBeautyApp {
             {
                 currentFrameTexture = outputTexture;
                 // const currentFrameTexture = this.createTextureFromCanvas(gl.canvas as HTMLCanvasElement);
-                this.setupGeometry();
-                this.renderUnifiedBeautyEffects(currentFrameTexture, landmarks);
+                
+                outputTexture = this.renderUnifiedBeautyEffects(currentFrameTexture)!;
                 gl.deleteTexture(currentFrameTexture);
             }
-
-            // 使用统一的美颜shader一次性渲染所有效果
-            gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-
-
+            {
+                currentFrameTexture = outputTexture;
+                this.reshape(currentFrameTexture, landmarks);
+                gl.deleteTexture(currentFrameTexture);
+            }
             // 复制结果到显示画布
             this.copyToResultCanvas();
 
@@ -803,6 +810,13 @@ class WebGLFaceBeautyApp {
         }
     };
 
+
+    private setTexture(gl: WebGLRenderingContext, program: ShaderProgramInfo, texture: WebGLTexture, attachedTo: string, idx: GLenum = gl.TEXTURE0): void {
+        gl.activeTexture(idx);
+        gl.bindTexture(gl.TEXTURE_2D, texture);
+        this.safeSetUniform(program, attachedTo, (loc) => gl.uniform1i(loc, idx - gl.TEXTURE0));
+    }
+
     private renderRawPicture(inputTexture: WebGLTexture): void {
         if (!this.gl || !this.originalCanvas || !this.programs.originalPicture) return;
 
@@ -812,19 +826,9 @@ class WebGLFaceBeautyApp {
         console.log('=== rawpicture rendering ===');
 
         gl.useProgram(program.program);
-
-        // vertex属性位置
-        this.setupGeometry();
-        // 设置顶点属性
-        this.setupVertexAttributes(program);
-
-        // 绑定纹理
-        gl.activeTexture(gl.TEXTURE0);
-        gl.bindTexture(gl.TEXTURE_2D, inputTexture);
-        this.safeSetUniform(program, 'u_texture', (loc) => gl.uniform1i(loc, 0));
-        // 渲染
+        this.setupGeometry(program);
+        this.setTexture(gl, program, inputTexture, 'u_texture');
         gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0);
-
         console.log('renderRawPicture done');
     }
 
@@ -838,20 +842,8 @@ class WebGLFaceBeautyApp {
         try {
             gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
             gl.useProgram(program.program);
-            this.setupGeometry(); // 不需要顶点属性
-            this.setupVertexAttributes(program)
-
-            //         attribute vec4 position;
-            //  attribute vec4 inputTextureCoordinate;
-
-            //  uniform float WO;    // 4/1000=0.004
-            //  uniform float HO;   // 4/1500=0.00266667
-
-
-            // 绑定纹理
-            gl.activeTexture(gl.TEXTURE0);
-            gl.bindTexture(gl.TEXTURE_2D, inputTexture);
-            this.safeSetUniform(program, 'u_texture', (loc) => gl.uniform1i(loc, 0));
+            this.setupGeometry(program); // 不需要顶点属性
+            this.setTexture(gl, program, inputTexture, 'u_texture');
             // 设置纹理uniform
             this.safeSetUniform(program, 'WO', (loc) => gl.uniform1f(loc, horizontal ? 4.0 / width : 0.0));
             this.safeSetUniform(program, 'HO', (loc) => gl.uniform1f(loc, (!horizontal) ? 4.0 / height : 0.0));
@@ -873,23 +865,9 @@ class WebGLFaceBeautyApp {
         try {
             gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
             gl.useProgram(program.program);
-            this.setupGeometry(); // 不需要顶点属性
-            this.setupVertexAttributes(program)
-
-            //         attribute vec4 position;
-            //  attribute vec4 inputTextureCoordinate;
-
-            //  uniform float WO;    // 4/1000=0.004
-            //  uniform float HO;   // 4/1500=0.00266667
-
-
-            // 绑定纹理
-            gl.activeTexture(gl.TEXTURE0);
-            gl.bindTexture(gl.TEXTURE_2D, inputTexture);
-            this.safeSetUniform(program, 'u_texture', (loc) => gl.uniform1i(loc, 0));
-            gl.activeTexture(gl.TEXTURE1);
-            gl.bindTexture(gl.TEXTURE_2D, inputTexture2);
-            this.safeSetUniform(program, 'u_texture2', (loc) => gl.uniform1i(loc, 1));
+            this.setupGeometry(program);
+            this.setTexture(gl, program, inputTexture, 'u_texture');
+            this.setTexture(gl, program, inputTexture2, 'u_texture2', gl.TEXTURE1);
 
             this.safeSetUniform(program, 'delta', (loc) => gl.uniform1f(loc, 7.07));
             gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0);
@@ -901,13 +879,7 @@ class WebGLFaceBeautyApp {
         return differ;
     }
 
-    private setTexture(gl: WebGLRenderingContext, program: ShaderProgramInfo, texture: WebGLTexture, attachedTo: string, idx: GLenum = gl.TEXTURE0): void {
-        gl.activeTexture(idx);
-        gl.bindTexture(gl.TEXTURE_2D, texture);
-        this.safeSetUniform(program, attachedTo, (loc) => gl.uniform1i(loc, idx - gl.TEXTURE0));
-    }
-
-    private renderUnifiedBeautyEffects(inputTexture: WebGLTexture, landmarks: Landmark[]): void {
+    private renderUnifiedBeautyEffects(inputTexture: WebGLTexture): WebGLTexture|undefined {
         if (!this.gl || !this.programs.faceBeauty || !this.originalCanvas) return;
 
         const gl = this.gl;
@@ -929,12 +901,25 @@ class WebGLFaceBeautyApp {
         gl.useProgram(program.program);
 
         // 设置顶点属性
-        this.setupVertexAttributes(program);
+        this.setupGeometry(program);
 
+        let output = this.createEmptyTexture(canvas.width, canvas.height);
+        let fb = this.createFramebuffer(output);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+        
         // 绑定纹理
         this.setTexture(gl, program, inputTexture, 'u_texture');
         blur && this.setTexture(gl, program, blur, 'u_texture_b', gl.TEXTURE2);
         differ && this.setTexture(gl, program, differ, 'u_texture_d', gl.TEXTURE3);
+        
+        if (this.beautyParams.brightness > 0)
+        {
+            this.setTexture(gl, program, this.lookupGray!, 'lookUpGray', gl.TEXTURE4);
+            this.setTexture(gl, program, this.lookupOrigin!, 'lookUpOrigin', gl.TEXTURE5);
+            this.setTexture(gl, program, this.lookupLight!, 'lookUpLight', gl.TEXTURE6);
+            this.setTexture(gl, program, this.lookupCustom!, 'lookUpCustom', gl.TEXTURE7);
+            this.setTexture(gl, program, this.lookupSkin!, 'lookUpSkin', gl.TEXTURE8);
+        }
 
 
         // 设置纹理uniform
@@ -946,7 +931,40 @@ class WebGLFaceBeautyApp {
         // uniform sampler2D u_texture_differ;
 
         // 设置人脸检测参数
-        this.safeSetUniform(program, 'u_hasFace', (loc) => gl.uniform1i(loc, 1));
+
+        this.safeSetUniform(program, 'u_smoothingLevel', (loc) => gl.uniform1f(loc, this.beautyParams.skinSmoothing));
+
+        // 设置颜色调整参数
+        this.safeSetUniform(program, 'u_brightness', (loc) => gl.uniform1f(loc, this.beautyParams.brightness));
+        this.safeSetUniform(program, 'u_contrast', (loc) => gl.uniform1f(loc, this.beautyParams.contrast));
+        this.safeSetUniform(program, 'u_saturation', (loc) => gl.uniform1f(loc, this.beautyParams.saturation));
+        this.safeSetUniform(program, 'u_warmth', (loc) => gl.uniform1f(loc, this.beautyParams.warmth));
+
+        // 渲染
+        gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0);
+
+        console.log('统一美颜渲染完成');
+        differ && gl.deleteTexture(differ);
+        blur && gl.deleteTexture(blur);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        gl.deleteFramebuffer(fb);
+        return output;
+    }
+
+    private reshape(inputTexture: WebGLTexture, landmarks: Landmark[]): void {
+        if (!this.gl || !this.programs.reshape || !this.originalCanvas) return;
+
+        const gl = this.gl;
+        const program = this.programs.reshape;
+        const canvas = gl.canvas as HTMLCanvasElement;
+
+        gl.useProgram(program.program);
+
+        // 设置顶点属性
+        this.setupGeometry(program);
+        // 绑定纹理
+        this.setTexture(gl, program, inputTexture, 'u_texture');
+
         const aspectRatio = this.originalCanvas.width / this.originalCanvas.height;
         this.safeSetUniform(program, 'u_aspectRatio', (loc) => gl.uniform1f(loc, aspectRatio));
 
@@ -966,34 +984,10 @@ class WebGLFaceBeautyApp {
         this.safeSetUniform(program, 'u_thinFaceDelta', (loc) => gl.uniform1f(loc, this.beautyParams.faceSlim));
         this.safeSetUniform(program, 'u_bigEyeDelta', (loc) => gl.uniform1f(loc, this.beautyParams.eyeEnlarge));
 
-        this.safeSetUniform(program, 'u_smoothingLevel', (loc) => gl.uniform1f(loc, this.beautyParams.skinSmoothing));
-
-        // 设置颜色调整参数
-        this.safeSetUniform(program, 'u_brightness', (loc) => gl.uniform1f(loc, this.beautyParams.brightness));
-        this.safeSetUniform(program, 'u_contrast', (loc) => gl.uniform1f(loc, this.beautyParams.contrast));
-        this.safeSetUniform(program, 'u_saturation', (loc) => gl.uniform1f(loc, this.beautyParams.saturation));
-        this.safeSetUniform(program, 'u_warmth', (loc) => gl.uniform1f(loc, this.beautyParams.warmth));
-
-        // 调试输出
-        console.log(`统一美颜参数:`);
-        console.log(`- 瘦脸强度: ${this.beautyParams.faceSlim}`);
-        console.log(`- 大眼强度: ${this.beautyParams.eyeEnlarge}`);
-        console.log(`- 磨皮强度: ${this.beautyParams.skinSmoothing}`);
-        console.log(`- 美白强度: ${this.beautyParams.brightness}`);
-        console.log(`- 对比度: ${this.beautyParams.contrast}`);
-        console.log(`- 饱和度: ${this.beautyParams.saturation}`);
-        console.log(`- 暖色调: ${this.beautyParams.warmth}`);
-        console.log(`- 唇膏强度: ${this.beautyParams.lipstickIntensity}`);
-        console.log(`- 唇膏混合模式: ${this.beautyParams.lipstickBlendMode}`);
-        console.log(`- 关键点数量: ${landmarks.length}`);
-        console.log(`- 宽高比: ${aspectRatio}`);
-
         // 渲染
         gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0);
 
-        console.log('统一美颜渲染完成');
-        differ && gl.deleteTexture(differ);
-        blur && gl.deleteTexture(blur);
+        console.log('reshape done');
     }
 
 
@@ -1128,7 +1122,7 @@ class WebGLFaceBeautyApp {
         console.log(`唇部三角形渲染完成，绘制了 ${lipGeometry.indices.length / 3} 个三角形`);
     }
 
-    private setupGeometry(flipTextureCoordY: boolean = false): void {
+    private setupGeometry(program: ShaderProgramInfo, flipTextureCoordY: boolean = false): void {
         if (!this.gl) return;
 
         const gl = this.gl;
@@ -1159,16 +1153,7 @@ class WebGLFaceBeautyApp {
         if (!this.indexBuffer) this.indexBuffer = gl.createBuffer();
         gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.indexBuffer);
         gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW);
-    }
 
-    private setupVertexAttributes(program: ShaderProgramInfo): void {
-        if (!this.gl) return;
-
-        const gl = this.gl;
-
-        // 绑定顶点缓冲区
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.vertexBuffer);
-        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.indexBuffer);
 
         // 设置位置属性 - 现在有完整的类型安全
         gl.enableVertexAttribArray(program.attributeLocations['a_position']);

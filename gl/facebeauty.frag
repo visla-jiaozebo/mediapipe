@@ -28,6 +28,10 @@ varying vec4 textureShift_2;
 varying vec4 textureShift_3;
 varying vec4 textureShift_4;
 
+    const float levelRangeInv = 1.02657;
+    const float levelBlack = 0.0258820;
+    const float alpha = 0.7;
+
 
 vec3 rgb2hsv(vec3 c) {
     vec4 K = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
@@ -99,6 +103,71 @@ vec4 faceSmooth(vec2 v_texCoord) {
     return vec4(color, iColor.a);
 }
 
+vec3 faceWhiten(vec3 color, vec2 v_texCoord) {
+        vec3 colorEPM = color;
+        color = clamp((colorEPM - vec3(levelBlack)) * levelRangeInv, 0.0, 1.0);
+        vec3 texel = vec3(texture2D(lookUpGray, vec2(color.r, 0.5)).r,
+                          texture2D(lookUpGray, vec2(color.g, 0.5)).g,
+                          texture2D(lookUpGray, vec2(color.b, 0.5)).b);
+        texel = mix(color, texel, 0.5);
+        texel = mix(colorEPM, texel, alpha);
+
+        texel = clamp(texel, 0., 1.);
+        float blueColor = texel.b * 15.0;
+        vec2 quad1;
+        quad1.y = floor(floor(blueColor) * 0.25);
+        quad1.x = floor(blueColor) - (quad1.y * 4.0);
+        vec2 quad2;
+        quad2.y = floor(ceil(blueColor) * 0.25);
+        quad2.x = ceil(blueColor) - (quad2.y * 4.0);
+        vec2 texPos2 = texel.rg * 0.234375 + 0.0078125;
+        vec2 texPos1 = quad1 * 0.25 + texPos2;
+        texPos2 = quad2 * 0.25 + texPos2;
+        vec3 newColor1Origin = texture2D(lookUpOrigin, texPos1).rgb;
+        vec3 newColor2Origin = texture2D(lookUpOrigin, texPos2).rgb;
+        vec3 colorOrigin =
+            mix(newColor1Origin, newColor2Origin, fract(blueColor));
+        texel = mix(colorOrigin, color, alpha);
+
+        texel = clamp(texel, 0., 1.);
+        blueColor = texel.b * 15.0;
+        quad1.y = floor(floor(blueColor) * 0.25);
+        quad1.x = floor(blueColor) - (quad1.y * 4.0);
+        quad2.y = floor(ceil(blueColor) * 0.25);
+        quad2.x = ceil(blueColor) - (quad2.y * 4.0);
+        texPos2 = texel.rg * 0.234375 + 0.0078125;
+        texPos1 = quad1 * 0.25 + texPos2;
+        texPos2 = quad2 * 0.25 + texPos2;
+        vec3 newColor1 = texture2D(lookUpSkin, texPos1).rgb;
+        vec3 newColor2 = texture2D(lookUpSkin, texPos2).rgb;
+        color = mix(newColor1.rgb, newColor2.rgb, fract(blueColor));
+        color = clamp(color, 0., 1.);
+
+        float blueColor_custom = color.b * 63.0;
+        vec2 quad1_custom;
+        quad1_custom.y = floor(floor(blueColor_custom) / 8.0);
+        quad1_custom.x = floor(blueColor_custom) - (quad1_custom.y * 8.0);
+        vec2 quad2_custom;
+        quad2_custom.y = floor(ceil(blueColor_custom) / 8.0);
+        quad2_custom.x = ceil(blueColor_custom) - (quad2_custom.y * 8.0);
+        vec2 texPos1_custom;
+        texPos1_custom.x = (quad1_custom.x * 1.0 / 8.0) + 0.5 / 512.0 +
+                           ((1.0 / 8.0 - 1.0 / 512.0) * color.r);
+        texPos1_custom.y = (quad1_custom.y * 1.0 / 8.0) + 0.5 / 512.0 +
+                           ((1.0 / 8.0 - 1.0 / 512.0) * color.g);
+        vec2 texPos2_custom;
+        texPos2_custom.x = (quad2_custom.x * 1.0 / 8.0) + 0.5 / 512.0 +
+                           ((1.0 / 8.0 - 1.0 / 512.0) * color.r);
+        texPos2_custom.y = (quad2_custom.y * 1.0 / 8.0) + 0.5 / 512.0 +
+                           ((1.0 / 8.0 - 1.0 / 512.0) * color.g);
+        newColor1 = texture2D(lookUpCustom, texPos1_custom).rgb;
+        newColor2 = texture2D(lookUpCustom, texPos2_custom).rgb;
+        vec3 color_custom =
+            mix(newColor1, newColor2, fract(blueColor_custom));
+        color = mix(color, color_custom, whiten);
+        return color;
+}
+
 void main() {
     vec2 texCoord = v_texCoord;
     // if (u_hasFace == 1) {
@@ -115,7 +184,7 @@ void main() {
 
     // 亮度调整 (美白)
     if (u_brightness != 0.0) {
-        color.rgb += u_brightness * 0.3;
+        color = vec4(faceWhiten(color.rgb, texCoord), color.a);
     }
     if (u_contrast != 0.0)
     {

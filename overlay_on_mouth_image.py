@@ -4,7 +4,7 @@ import numpy as np
 
 try:
     # Try to load the actual mouth.png image
-    img = mpimg.imread('/Users/visla/Downloads/forMediapipe/gl/mouth.png')
+    img = mpimg.imread('/Users/visla/Downloads/forMediapipe/res/img/mouth.png')
     # print the alpha channel nomalized to 0~1 of this image
     if img.shape[2] == 4:  # Check if the image has an alpha channel
         alpha_channel = img[:, :, 3]  # Normalize alpha channel to 0-1

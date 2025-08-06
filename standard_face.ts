@@ -2877,7 +2877,7 @@ let standard_landmarks: StandardFaceLandmark[] = [{
             "z": -0.0039891027845442295,
             "visibility": 0
         }
-    ], path: '/gl/standard_face4.png'
+    ], path: '/res/img/standard_face4.png'
 }, {
     landmarks: [
     {
@@ -5748,7 +5748,7 @@ let standard_landmarks: StandardFaceLandmark[] = [{
         "z": -0.034343868494033813,
         "visibility": 0
     }
-], path: '/gl/standard_face2.png'
+], path: '/res/img/standard_face2.png'
 },{landmarks:[
     {
         "x": 0.46614107489585876,
@@ -8618,7 +8618,7 @@ let standard_landmarks: StandardFaceLandmark[] = [{
         "z": -0.004166803788393736,
         "visibility": 0
     }
-],path:'/gl/standard_face3.png'}];
+],path:'/res/img/standard_face3.png'}];
 
 let dummy_landmarks = [
 ]
@@ -8633,7 +8633,7 @@ for (let i = 0; i < 478; i++) {
 
 standard_landmarks.push({
     landmarks: dummy_landmarks,
-    path: '/gl/mouth-copy.png'
+    path: '/res/img/mouth.png'
 });
 
 export default standard_landmarks[3];
