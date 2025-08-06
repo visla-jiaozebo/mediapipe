@@ -2,6 +2,17 @@ precision highp float;
 
 varying vec2 v_texCoord; 
 uniform sampler2D u_texture;
+uniform sampler2D u_texture_b;
+uniform sampler2D u_texture_d;
+
+uniform sampler2D lookUpGray;
+uniform sampler2D lookUpOrigin;
+uniform sampler2D lookUpSkin;
+uniform sampler2D lookUpCustom;
+
+uniform float sharpen;
+uniform float blurAlpha;
+uniform float whiten;
 
     // 人脸检测参数
 uniform int u_hasFace;
@@ -13,8 +24,6 @@ uniform float u_aspectRatio;
 uniform float u_thinFaceDelta;   // 瘦脸强度 [0.0, 1.0]
 uniform float u_bigEyeDelta;     // 大眼强度 [0.0, 1.0]
 
-    // 磨皮参数
-uniform vec2 u_textureSize;
 uniform float u_smoothingLevel; // [0.0, 1.0] 
 
 //  美白，对比度，饱和度，暖色调
@@ -22,6 +31,12 @@ uniform float u_brightness;  // 美白强度 [-1.0, 1.0]
 uniform float u_contrast;    // 对比度 [-1.0, 1.0]
 uniform float u_saturation;  // 饱和度 [-1.0, 1.0]
 uniform float u_warmth;      // 暖色调 [-1.0, 1.0] 
+
+
+varying vec4 textureShift_1;
+varying vec4 textureShift_2;
+varying vec4 textureShift_3;
+varying vec4 textureShift_4;
 
 vec2 enlargeEye(vec2 textureCoord, vec2 originPosition, float radius, float delta) {
 
@@ -100,7 +115,7 @@ vec2 thinFace(vec2 currentCoord) {
         // 左脸颊轮廓关键点 (面部椭圆左侧)
         // vec2 leftCheek1 = vec2(u_facePointsX[162], u_facePointsY[162]);
     // vec4 leftCheek2 = vec4(u_facePointsX[127], u_facePointsY[127], u_facePointsX[6], u_facePointsY[6]);
-    vec4 leftCheek3 = vec4(u_facePointsX[234], u_facePointsY[234], u_facePointsX[5], u_facePointsY[5]);
+    vec4 leftCheek3 = vec4(u_facePointsX[234], u_facePointsY[234], u_facePointsX[101], u_facePointsY[101]);
     vec4 leftCheek4 = vec4(u_facePointsX[93], u_facePointsY[93], u_facePointsX[4], u_facePointsY[4]);
     vec4 leftCheek5 = vec4(u_facePointsX[132], u_facePointsY[132], u_facePointsX[164], u_facePointsY[164]);
     vec4 leftCheek6 = vec4(u_facePointsX[215], u_facePointsY[215], u_facePointsX[13], u_facePointsY[13]);
@@ -317,29 +332,59 @@ vec3 applyLipMakeup(vec3 baseColor, vec3 lipColor, float intensity, int blendMod
     return baseColor;
 } 
 
+vec4 faceSmooth(vec2 v_texCoord) {
+    vec4 iColor = texture2D(u_texture, v_texCoord);
+    vec4 meanColor = texture2D(u_texture_b, v_texCoord);
+    vec4 varColor = texture2D(u_texture_d, v_texCoord);
+
+    vec3 color = iColor.rgb;
+    float theta = 0.1;
+    float p = clamp((min(iColor.r, meanColor.r - 0.1) - 0.2) * 4.0, 0.0, 1.0);
+    float meanVar = (varColor.r + varColor.g + varColor.b) / 3.0;
+    float kMin;
+    vec3 resultColor;
+    kMin = (1.0 - meanVar / (meanVar + theta)) * p * u_smoothingLevel;
+    kMin = clamp(kMin, 0.0, 1.0);
+    resultColor = mix(iColor.rgb, meanColor.rgb, kMin);
+
+    vec3 sum = 0.25 * iColor.rgb;
+    sum += 0.125 * texture2D(u_texture, textureShift_1.xy).rgb;
+    sum += 0.125 * texture2D(u_texture, textureShift_1.zw).rgb;
+    sum += 0.125 * texture2D(u_texture, textureShift_2.xy).rgb;
+    sum += 0.125 * texture2D(u_texture, textureShift_2.zw).rgb;
+    sum += 0.0625 * texture2D(u_texture, textureShift_3.xy).rgb;
+    sum += 0.0625 * texture2D(u_texture, textureShift_3.zw).rgb;
+    sum += 0.0625 * texture2D(u_texture, textureShift_4.xy).rgb;
+    sum += 0.0625 * texture2D(u_texture, textureShift_4.zw).rgb;
+
+    vec3 hPass = iColor.rgb - sum;
+    color = resultColor + sharpen * hPass * 2.0;
+    return vec4(color, iColor.a);
+}
+
 void main() {
     vec2 texCoord = v_texCoord;
+    // if (u_hasFace == 1) {
+    //     gl_FragColor = texture2D(u_texture_d, texCoord);
+    //     return;
+    // }
+    
     
     if(u_hasFace == 1 && u_thinFaceDelta > 0.0) {
         texCoord = thinFace(texCoord); 
-         texCoord = clamp(texCoord, 0.0, 1.0);
+        texCoord = clamp(texCoord, 0.0, 1.0);
     }
     
     if(u_hasFace == 1 && u_bigEyeDelta > 0.0) {
         texCoord = bigEye(texCoord);
         texCoord = clamp(texCoord, 0.0, 1.0); 
     }
-    
     // 磨皮处理
     vec4 color = texture2D(u_texture, texCoord);
     if(u_smoothingLevel > 0.0) {
-        vec2 texelSize = 1.0 / u_textureSize;
-        vec4 smoothedColor = bilateralFilter(u_texture, texCoord, texelSize);
-        color = mix(color, smoothedColor, u_smoothingLevel);
+        color = faceSmooth(texCoord);
+        // color = mix(color, smoothedColor, u_smoothingLevel);
     }
-    
-    // vec3 lipColor = texture2D(u_lipTexture, v_lipTexCoord).rgb;
-    // color.rgb = applyLipMakeup(color.rgb, lipColor, u_lipIntensity , u_lipstickBlendMode);
 
     // 亮度调整 (美白)
     if (u_brightness != 0.0) {
