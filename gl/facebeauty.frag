@@ -1,13 +1,7 @@
 precision highp float;
 
 varying vec2 v_texCoord; 
-varying vec2 v_lipTexCoord; // 用于唇部纹理坐标
 uniform sampler2D u_texture;
-
-// 唇部化妆相关
-uniform sampler2D u_lipTexture;     // 嘴唇纹理
-uniform float u_lipIntensity;       // 唇膏强度 [0.0, 1.0]
-uniform int u_lipstickBlendMode;         // 混合模式: 0=正常, 1=叠加, 2=柔光
 
     // 人脸检测参数
 uniform int u_hasFace;

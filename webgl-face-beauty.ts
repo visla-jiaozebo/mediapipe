@@ -44,7 +44,7 @@ export class BeautyParams {
 
         // 唇部化妆默认值
         this.lipstickIntensity = 0.8;   // 唇膏强度 [0.0, 1.0]
-        this.lipstickBlendMode = 0;   // 唇膏混合模式: 0=正常, 1=叠加, 2=柔光
+        this.lipstickBlendMode = 15;   //
 
         this.blushIntensity = 0;     // 混合模式: 0=正常, 1=叠加, 2=柔光
         this.blushBlendMode = 0;      // 腮红混合模式: 0=正常, 1=叠加, 2=柔光
@@ -1154,6 +1154,34 @@ FACEMESH_LIPS = frozenset([(61, 146), (146, 91), (91, 181), (181, 84), (84, 17),
         console.log('关键点已绘制到原始画布上');
     }
 
+    private createEmptyTexture(width: number, height: number): WebGLTexture {
+        const gl = this.gl!;
+        const texture = gl.createTexture();
+        
+        gl.bindTexture(gl.TEXTURE_2D, texture);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        
+        return texture;
+    }
+
+    private createFramebuffer(texture: WebGLTexture): WebGLFramebuffer {
+        const gl = this.gl!;
+        const framebuffer = gl.createFramebuffer();
+        
+        gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
+        
+        if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) {
+            throw new Error('create framebuffer failed: Framebuffer is not complete');
+        }
+        
+        return framebuffer;
+    }
+
     private applyWebGLBeautyEffects(): void {
         if (!this.gl || !this.originalCanvas || this.isProcessing || this.faceLandmarks.length === 0) {
             console.log('条件不满足，跳过美颜处理');
@@ -1173,25 +1201,30 @@ FACEMESH_LIPS = frozenset([(61, 146), (146, 91), (91, 181), (181, 84), (84, 17),
             canvas.width = this.originalCanvas.width;
             canvas.height = this.originalCanvas.height;
             gl.viewport(0, 0, canvas.width, canvas.height);
-
+            let currentFrameTexture: WebGLTexture;
+            let outputTexture: WebGLTexture;
+            let fb: WebGLFramebuffer;
             {
+                // 底图+唇部
+                currentFrameTexture = this.createTextureFromCanvas(this.originalCanvas);
+                outputTexture = this.createEmptyTexture(this.originalCanvas.width, this.originalCanvas.height);
+                fb = this.createFramebuffer(outputTexture);
+                gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
                 // 底图
-                const inputTexture = this.createTextureFromCanvas(this.originalCanvas);
                 this.setupGeometry();
-                this.renderRawPicture(inputTexture);
-                gl.deleteTexture(inputTexture);
-            }
-
-            // 如果有唇膏效果，在底图基础上渲染唇部
-            if (this.beautyParams.lipstickIntensity > 0) {
-                // 将当前framebuffer作为输入渲染唇部
-                const currentFrameTexture = this.createTextureFromCanvas(gl.canvas as HTMLCanvasElement);
-                this.renderLipMakeup(currentFrameTexture, landmarks);
+                this.renderRawPicture(currentFrameTexture);
+                // 如果有唇膏效果，渲染唇部
+                if (this.beautyParams.lipstickIntensity > 0) {
+                    this.renderLipMakeup(currentFrameTexture, landmarks);
+                }
                 gl.deleteTexture(currentFrameTexture);
             }
-            if (true) {
-                const currentFrameTexture = this.createTextureFromCanvas(gl.canvas as HTMLCanvasElement);
-                this.setupGeometry(true);
+
+            {
+                currentFrameTexture = outputTexture;
+                gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+                // const currentFrameTexture = this.createTextureFromCanvas(gl.canvas as HTMLCanvasElement);
+                this.setupGeometry();
                 this.renderUnifiedBeautyEffects(currentFrameTexture, landmarks);
                 gl.deleteTexture(currentFrameTexture);
             }
@@ -1260,7 +1293,7 @@ FACEMESH_LIPS = frozenset([(61, 146), (146, 91), (91, 181), (181, 84), (84, 17),
         // 渲染
         gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0);
 
-        console.log('统一美颜渲染完成');
+        console.log('renderRawPicture done');
     }
 
     private renderUnifiedBeautyEffects(inputTexture: WebGLTexture, landmarks: Landmark[]): void {
@@ -1293,7 +1326,7 @@ FACEMESH_LIPS = frozenset([(61, 146), (146, 91), (91, 181), (181, 84), (84, 17),
         const facePointsY = new Float32Array(478);
         for (let i = 0; i < Math.min(landmarks.length, 478); i++) {
             facePointsX[i] = landmarks[i].x;
-            facePointsY[i] = 1.0 - landmarks[i].y;
+            facePointsY[i] = landmarks[i].y;
         }
 
         // 传递关键点数组
@@ -1367,7 +1400,7 @@ FACEMESH_LIPS = frozenset([(61, 146), (146, 91), (91, 181), (181, 84), (84, 17),
                 console.log(`顶点 ${index}: (${x}, ${y})`);
 
                 // 原始纹理坐标
-                texCoords.push(landmark.x, 1 - landmark.y);
+                texCoords.push(landmark.x, landmark.y);
                 lipTexCoords.push(standard_landmark[index].x, standard_landmark[index].y);
 
                 // 唇部纹理坐标 (这里可以使用变换矩阵)

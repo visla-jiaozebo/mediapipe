@@ -128,7 +128,7 @@ void main1() {
 
       vec3 color = blendFunc(bgColor.rgb,
                              clamp(fgColor.rgb * (1.0 / fgColor.a), 0.0, 1.0),
-                             15);
+                             blendMode);
       //    color = color * intensity;
       gl_FragColor =
           vec4(bgColor.rgb * (1.0 - fgColor.a) + color.rgb * fgColor.a, 1.0);
