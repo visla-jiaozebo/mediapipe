@@ -44,7 +44,7 @@ export class BeautyParams {
         this.warmth = 0.0;         // 暖色调 [-1.0, 1.0]
 
         // 唇部化妆默认值
-        this.lipstickIntensity = 0.8;   // 唇膏强度 [0.0, 1.0]
+        this.lipstickIntensity = 0.0;   // 唇膏强度 [0.0, 1.0]
         this.lipstickBlendMode = 15;   //
 
         this.blushIntensity = 0;     // 混合模式: 0=正常, 1=叠加, 2=柔光
