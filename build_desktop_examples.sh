@@ -63,7 +63,7 @@ echo "out_dir: $out_dir"
 
 declare -a bazel_flags
 
-apps="${app_dir}/*"
+apps="${app_dir}/face_mesh"
 for app in ${apps}; do
   if [[ -d "${app}" ]]; then
     target_name=${app##*/}

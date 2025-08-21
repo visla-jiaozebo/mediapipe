@@ -13,6 +13,7 @@ COPTS = select({
         "-Wno-incompatible-pointer-types",
         "-Wno-incompatible-pointer-types-discards-qualifiers",
         "-Wno-parentheses",
+        "-Wno-macro-redefined",
         "-DIOAPI_NO_64",
     ],
 })

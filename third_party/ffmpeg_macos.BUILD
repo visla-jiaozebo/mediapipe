@@ -21,14 +21,16 @@ cc_library(
     srcs = glob(
         [
             "lib/libav*.dylib",
+            "lib/libsw*.dylib",
         ],
     ),
-    hdrs = glob(["include/libav*/*.h"]),
+    hdrs = glob(["include/libav*/*.h", "include/libsw*/*.h"]),
     includes = ["include/"],
     linkopts = [
         "-lavcodec",
         "-lavformat",
         "-lavutil",
+        "-lswscale",
     ],
     linkstatic = 1,
     visibility = ["//visibility:public"],

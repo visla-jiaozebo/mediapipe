@@ -1,0 +1,22 @@
+# MediaPipe graph for face landmarks (lighter than full face mesh) on CPU.
+# Input: frames via "input_video" ImageFrame stream.
+# Output: vector<NormalizedLandmarkList> via "multi_face_landmarks".
+
+input_stream: "input_video"
+output_stream: "multi_face_landmarks"
+
+# Flow limiter like other *desktop_live graphs.
+node {
+  calculator: "FlowLimiterCalculator"
+  input_stream: "input_video"
+  input_stream: "FINISHED:multi_face_landmarks"
+  input_stream_info { tag_index: "FINISHED" back_edge: true }
+  output_stream: "throttled_input_video"
+}
+
+# Face landmark front subgraph (CPU) produces landmark lists.
+node {
+  calculator: "FaceLandmarkFrontCpu"
+  input_stream: "IMAGE:throttled_input_video"
+  output_stream: "LANDMARKS:multi_face_landmarks"
+}

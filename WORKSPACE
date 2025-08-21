@@ -608,13 +608,13 @@ new_local_repository(
     # For local MacOS builds, the path should point to an opencv@3 installation.
     # If you edit the path here, you will also need to update the corresponding
     # prefix in "opencv_macos.BUILD".
-    path = "/opt/homebrew/Cellar/",  # e.g. /usr/local/Cellar for HomeBrew
+    path = "/Users/visla/github/opencv/dist",  # e.g. /usr/local/Cellar for HomeBrew
 )
 
 new_local_repository(
     name = "macos_ffmpeg",
     build_file = "@//third_party:ffmpeg_macos.BUILD",
-    path = "/opt/homebrew/Cellar/ffmpeg",
+    path = "/opt/homebrew/Cellar/ffmpeg/7.1_4",
 )
 
 new_local_repository(
