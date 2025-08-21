@@ -115,23 +115,14 @@ class WebGLFaceBeautyApp {
     // 美颜参数
     private beautyParams: BeautyParams = new BeautyParams();
 
-    // 化妆纹理
-    private makeupTextures: MakeupTextures = {
-        lipstick: null,
-        blush: null,
-        eyeshadow: null
-    };
-
     // 唇部纹理
     private lipTexture: WebGLTexture | null = null;
+    private blusherTexture: WebGLTexture | null = null;
     private lookupGray: WebGLTexture | null = null;
     private lookupLight: WebGLTexture | null = null;
     private lookupCustom: WebGLTexture | null = null;
     private lookupOrigin: WebGLTexture | null = null;
     private lookupSkin: WebGLTexture | null = null;
-
-    // 唇部变换矩阵
-    private lipTransformMatrix: Float32Array | null = null;
 
     // 化妆相关缓冲区
     private faceMakeupVertexBuffer: WebGLBuffer | null = null;
@@ -311,6 +302,7 @@ class WebGLFaceBeautyApp {
         this.lookupCustom = await this.textureFromImage("/res/img/lookup_custom.png");
         this.lookupOrigin = await this.textureFromImage("/res/img/lookup_origin.png");
         this.lookupSkin = await this.textureFromImage("/res/img/lookup_skin.png");
+        this.blusherTexture = await this.textureFromImage("/res/img/blusher.png");
         console.log('创建默认唇部纹理 done...');
     }
 
@@ -753,6 +745,9 @@ class WebGLFaceBeautyApp {
                 if (this.beautyParams.lipstickIntensity > 0) {
                     this.renderLipMakeup(currentFrameTexture, landmarks);
                 }
+                if (this.beautyParams.blushIntensity > 0) {
+                    this.renderBlusherMakeup(currentFrameTexture, landmarks);
+                }
                 gl.deleteTexture(currentFrameTexture);
                 gl.bindFramebuffer(gl.FRAMEBUFFER, null);
                 gl.deleteFramebuffer(fb);
@@ -1035,11 +1030,140 @@ class WebGLFaceBeautyApp {
             indices: new Uint16Array(indices)
         };
     }
+    
+    private generateBlusherGeometry(landmarks: Landmark[]): {
+        vertices: Float32Array,
+        texCoords: Float32Array,
+        lipTexCoords: Float32Array,
+        indices: Uint16Array
+    } {
+        const triangleIndices = lip_data.lip_points;
+        // 生成顶点数据
+        const vertices: number[] = [];
+        const texCoords: number[] = [];
+        let lipTexCoords: number[] = [];
+        const standard_landmark = this.standardLandmarks?.landmarks || [];
+
+        for (const index of triangleIndices) {
+            if (index < landmarks.length) {
+                const landmark = landmarks[index];
+
+                // 顶点位置 (NDC坐标)
+                const x = landmark.x * 2.0 - 1.0; // [0,1] -> [-1,1]
+                const y = (landmark.y) * 2.0 - 1.0; // [0,1] -> [-1,1], 翻转Y轴
+                vertices.push(x, y);
+                // 原始纹理坐标
+                texCoords.push(landmark.x, landmark.y);
+                lipTexCoords.push(standard_landmark[index].x, standard_landmark[index].y);
+            }
+        }
+        lipTexCoords = this.getLipTexCoords();
+        let lipArea = { left: landmarks[57].x, top: landmarks[37].y, right: landmarks[287].x, bottom: landmarks[17].y };
+
+        // 生成索引
+        let indices: number[] = [];
+        for (let i = 0; i < triangleIndices.length; i += 3) {
+            indices.push(i, i + 1, i + 2);
+        }
+        return {
+            vertices: new Float32Array(vertices),
+            texCoords: new Float32Array(texCoords),
+            lipTexCoords: new Float32Array(lipTexCoords),
+            indices: new Uint16Array(indices)
+        };
+    }
     /**
      * 渲染唇部化妆效果 - 只处理唇部三角形
      */
     private renderLipMakeup(inputTexture: WebGLTexture, landmarks: Landmark[]): void {
         if (!this.gl || !this.programs.lipMakeup || !this.lipTexture) return;
+
+        const gl = this.gl;
+        const program = this.programs.lipMakeup;
+
+        console.log('=== 开始唇部三角形渲染 ===');
+
+        // 生成唇部几何体
+        const lipGeometry = this.generateLipGeometry(landmarks);
+
+        // 创建唇部顶点缓冲区
+        if (!this.lipVertexBuffer) {
+            this.lipVertexBuffer = gl.createBuffer();
+            this.lipTexCoordBuffer = gl.createBuffer();
+            this.lipIndexBuffer = gl.createBuffer();
+        }
+
+        // 更新顶点数据
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.lipVertexBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, lipGeometry.vertices, gl.DYNAMIC_DRAW);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.lipTexCoordBuffer);
+        const combinedTexCoords = new Float32Array(lipGeometry.texCoords.length + lipGeometry.lipTexCoords.length);
+        combinedTexCoords.set(lipGeometry.texCoords, 0);
+        combinedTexCoords.set(lipGeometry.lipTexCoords, lipGeometry.texCoords.length);
+        gl.bufferData(gl.ARRAY_BUFFER, combinedTexCoords, gl.DYNAMIC_DRAW);
+
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.lipIndexBuffer);
+        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, lipGeometry.indices, gl.DYNAMIC_DRAW);
+
+        // 使用唇部shader
+        gl.useProgram(program.program);
+
+        // 绑定纹理
+        if (inputTexture) {
+            gl.activeTexture(gl.TEXTURE0);
+            gl.bindTexture(gl.TEXTURE_2D, inputTexture);
+            gl.uniform1i(program.uniformLocations['u_texture']!, 0);
+            this.safeSetUniform(program, 'u_texture', (loc) => gl.uniform1i(loc, 0));
+        }
+        // 设置唇部化妆纹理
+        if (this.lipTexture) {
+            gl.activeTexture(gl.TEXTURE1);
+            gl.bindTexture(gl.TEXTURE_2D, this.lipTexture);
+            this.safeSetUniform(program, 'u_lipTexture', (loc) => gl.uniform1i(loc, 1));
+        }
+        // 设置唇部化妆参数
+        this.safeSetUniform(program, 'u_lipIntensity', (loc) => gl.uniform1f(loc, this.beautyParams.lipstickIntensity));
+        this.safeSetUniform(program, 'u_lipstickBlendMode', (loc) => gl.uniform1i(loc, this.beautyParams.lipstickBlendMode));
+
+        // 设置顶点属性
+        const positionLoc = program.attributeLocations['a_position'];
+        const texCoordLoc = program.attributeLocations['a_texCoord'];
+        const lipTexCoordLoc = gl.getAttribLocation(program.program, 'a_lipTexCoord');
+
+        // 位置属性
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.lipVertexBuffer);
+        gl.enableVertexAttribArray(positionLoc);
+        gl.vertexAttribPointer(positionLoc, 2, gl.FLOAT, false, 0, 0);
+
+        // 纹理坐标属性
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.lipTexCoordBuffer);
+        gl.enableVertexAttribArray(texCoordLoc);
+        gl.vertexAttribPointer(texCoordLoc, 2, gl.FLOAT, false, 0, 0);
+
+        // 唇部纹理坐标属性
+        gl.enableVertexAttribArray(lipTexCoordLoc);
+        gl.vertexAttribPointer(lipTexCoordLoc, 2, gl.FLOAT, false, 0, lipGeometry.texCoords.length * 4);
+
+        // 启用混合
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+        // 渲染唇部三角形
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.lipIndexBuffer);
+        gl.drawElements(gl.TRIANGLES, lipGeometry.indices.length, gl.UNSIGNED_SHORT, 0);
+
+        // 禁用混合
+        gl.disable(gl.BLEND);
+
+        console.log(`唇部三角形渲染完成，绘制了 ${lipGeometry.indices.length / 3} 个三角形`);
+    }
+
+    /**
+     * 渲染唇部化妆效果 - 只处理唇部三角形
+     */
+    private renderBlusherMakeup(inputTexture: WebGLTexture, landmarks: Landmark[]): void {
+        if (!this.gl || !this.programs.lipMakeup || !this.blusherTexture) return;
 
         const gl = this.gl;
         const program = this.programs.lipMakeup;
