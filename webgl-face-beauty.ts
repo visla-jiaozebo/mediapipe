@@ -335,31 +335,6 @@ class WebGLFaceBeautyApp {
         });
     }
 
-    private getLipTexCoords(): number[] {
-        // upper_lip_points = {
-        let { landmarks_map, idx_map, lip_points } = lip_data;
-        let a2 = []
-        for (let i = 0; i < lip_points.length; i++) {
-            if (!idx_map.has(lip_points[i])) {
-                console.warn(`唇部纹理坐标缺失: ${lip_points[i]}`);
-                continue;
-            }
-            a2.push(idx_map.get(lip_points[i])!);
-        }
-        let a3 = []
-        for (let i = 0; i < a2.length - 2; i++) {
-            let v0 = landmarks_map.get(a2[i]);
-            let v1 = landmarks_map.get(a2[i + 1]);
-            let v2 = landmarks_map.get(a2[i + 2]);
-            if (!v0 || !v1 || !v2) {
-                console.warn(`唇部纹理坐标缺失: ${a2[i]}, ${a2[i + 1]}, ${a2[i + 2]}`);
-                continue;
-            }
-            a3.push(v0[0], v0[1], v1[0], v1[1], v2[0], v2[1]);
-        }
-        return a3
-    }
-
     private async initializeMediaPipe(): Promise<void> {
         const vision = await FilesetResolver.forVisionTasks(
             "/res/wasm"
@@ -1012,10 +987,31 @@ class WebGLFaceBeautyApp {
                 vertices.push(x, y);
                 // 原始纹理坐标
                 texCoords.push(landmark.x, landmark.y);
-                lipTexCoords.push(standard_landmark[index].x, standard_landmark[index].y);
             }
         }
-        lipTexCoords = this.getLipTexCoords();
+        {
+                    // upper_lip_points = {
+            let { landmarks_map, idx_map, lip_points } = lip_data;
+            let a2 = []
+            for (let i = 0; i < lip_points.length; i++) {
+                if (!idx_map.has(lip_points[i])) {
+                    console.warn(`唇部纹理坐标缺失: ${lip_points[i]}`);
+                    continue;
+                }
+                a2.push(idx_map.get(lip_points[i])!);
+            }
+            lipTexCoords = []
+            for (let i = 0; i < a2.length - 2; i++) {
+                let v0 = landmarks_map.get(a2[i]);
+                let v1 = landmarks_map.get(a2[i + 1]);
+                let v2 = landmarks_map.get(a2[i + 2]);
+                if (!v0 || !v1 || !v2) {
+                    console.warn(`唇部纹理坐标缺失: ${a2[i]}, ${a2[i + 1]}, ${a2[i + 2]}`);
+                    continue;
+                }
+                lipTexCoords.push(v0[0], v0[1], v1[0], v1[1], v2[0], v2[1]);
+            }
+        }
         let lipArea = { left: landmarks[57].x, top: landmarks[37].y, right: landmarks[287].x, bottom: landmarks[17].y };
 
         // 生成索引
@@ -1057,7 +1053,7 @@ class WebGLFaceBeautyApp {
                 lipTexCoords.push(standard_landmark[index].x, standard_landmark[index].y);
             }
         }
-        lipTexCoords = this.getLipTexCoords();
+        // lipTexCoords = this.getLipTexCoords();
         let lipArea = { left: landmarks[57].x, top: landmarks[37].y, right: landmarks[287].x, bottom: landmarks[17].y };
 
         // 生成索引
@@ -1093,16 +1089,6 @@ class WebGLFaceBeautyApp {
             this.lipIndexBuffer = gl.createBuffer();
         }
 
-        // 更新顶点数据
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.lipVertexBuffer);
-        gl.bufferData(gl.ARRAY_BUFFER, lipGeometry.vertices, gl.DYNAMIC_DRAW);
-
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.lipTexCoordBuffer);
-        const combinedTexCoords = new Float32Array(lipGeometry.texCoords.length + lipGeometry.lipTexCoords.length);
-        combinedTexCoords.set(lipGeometry.texCoords, 0);
-        combinedTexCoords.set(lipGeometry.lipTexCoords, lipGeometry.texCoords.length);
-        gl.bufferData(gl.ARRAY_BUFFER, combinedTexCoords, gl.DYNAMIC_DRAW);
-
         gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.lipIndexBuffer);
         gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, lipGeometry.indices, gl.DYNAMIC_DRAW);
 
@@ -1133,28 +1119,26 @@ class WebGLFaceBeautyApp {
 
         // 位置属性
         gl.bindBuffer(gl.ARRAY_BUFFER, this.lipVertexBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, lipGeometry.vertices, gl.DYNAMIC_DRAW);
         gl.enableVertexAttribArray(positionLoc);
         gl.vertexAttribPointer(positionLoc, 2, gl.FLOAT, false, 0, 0);
 
         // 纹理坐标属性
         gl.bindBuffer(gl.ARRAY_BUFFER, this.lipTexCoordBuffer);
+        const combinedTexCoords = new Float32Array(lipGeometry.texCoords.length + lipGeometry.lipTexCoords.length);
+        combinedTexCoords.set(lipGeometry.texCoords, 0);
+        combinedTexCoords.set(lipGeometry.lipTexCoords, lipGeometry.texCoords.length);
+        gl.bufferData(gl.ARRAY_BUFFER, combinedTexCoords, gl.DYNAMIC_DRAW);
+        // 纹理坐标属性
         gl.enableVertexAttribArray(texCoordLoc);
         gl.vertexAttribPointer(texCoordLoc, 2, gl.FLOAT, false, 0, 0);
-
         // 唇部纹理坐标属性
         gl.enableVertexAttribArray(lipTexCoordLoc);
         gl.vertexAttribPointer(lipTexCoordLoc, 2, gl.FLOAT, false, 0, lipGeometry.texCoords.length * 4);
 
-        // 启用混合
-        gl.enable(gl.BLEND);
-        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-
         // 渲染唇部三角形
         gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.lipIndexBuffer);
         gl.drawElements(gl.TRIANGLES, lipGeometry.indices.length, gl.UNSIGNED_SHORT, 0);
-
-        // 禁用混合
-        gl.disable(gl.BLEND);
 
         console.log(`唇部三角形渲染完成，绘制了 ${lipGeometry.indices.length / 3} 个三角形`);
     }
