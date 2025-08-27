@@ -39,6 +39,20 @@ http_archive(
     urls = ["https://github.com/abseil/abseil-cpp/archive//9687a8ea750bfcddf790372093245a1d041b21a3.tar.gz"],
 )
 
+# Apple support must come before rules_cc for toolchain registration
+http_archive(
+    name = "build_bazel_apple_support",
+    sha256 = "bf36532a8dedf5fc2b11d03314606743e20d462086514e9090ddd0b106e3b97a",
+    url = "https://github.com/bazelbuild/apple_support/releases/download/1.23.0/apple_support.1.23.0.tar.gz",
+)
+
+load(
+    "@build_bazel_apple_support//lib:repositories.bzl",
+    "apple_support_dependencies",
+)
+
+apple_support_dependencies()
+
 http_archive(
     name = "rules_cc",
     patch_args = ["-p1"],
@@ -450,13 +464,6 @@ load(
 )
 
 swift_rules_extra_dependencies()
-
-load(
-    "@build_bazel_apple_support//lib:repositories.bzl",
-    "apple_support_dependencies",
-)
-
-apple_support_dependencies()
 
 # This is used to select all contents of the archives for CMake-based packages to give CMake access to them.
 all_content = """filegroup(name = "all", srcs = glob(["**"]), visibility = ["//visibility:public"])"""
@@ -909,3 +916,10 @@ http_archive(
     strip_prefix = "skia-226ae9d866748a2e68b6dbf114b37129c380a298/include/config",
     urls = ["https://github.com/google/skia/archive/226ae9d866748a2e68b6dbf114b37129c380a298.zip"],
 )
+
+load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+
+
+load("@bazel_features//:deps.bzl", "bazel_features_deps")
+
+bazel_features_deps()
