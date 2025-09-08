@@ -70,16 +70,25 @@ http_archive(
 
 http_archive(
     name = "com_google_protobuf",
-    patch_args = [
-        "-p1",
-    ],
-    patches = [
-        "@//third_party:com_google_protobuf_fixes.diff",
-    ],
-    sha256 = "f645e6e42745ce922ca5388b1883ca583bafe4366cc74cf35c3c9299005136e2",
-    strip_prefix = "protobuf-5.28.3",
-    urls = ["https://github.com/protocolbuffers/protobuf/archive/refs/tags/v5.28.3.zip"],
+    # patch_args = [
+    #     "-p1",
+    # ],
+    # patches = [
+    #     "@//third_party:com_google_protobuf_fixes.diff",
+    # ],
+    sha256 = "f66073dee0bc159157b0bd7f502d7d1ee0bc76b3c1eac9836927511bdc4b3fc1",
+    strip_prefix = "protobuf-3.21.9",
+    urls = ["https://github.com/protocolbuffers/protobuf/archive/refs/tags/v3.21.9.zip"],
 )
+
+# new_local_repository(
+#     name = "com_google_protobuf",
+#     build_file = "@//third_party:protobuf_macos.BUILD",
+#     # For local MacOS builds, the path should point to an opencv@3 installation.
+#     # If you edit the path here, you will also need to update the corresponding
+#     # prefix in "opencv_macos.BUILD".
+#     path = "/Users/visla/github/opencv/dist",  # e.g. /usr/local/Cellar for HomeBrew
+# )
 
 http_archive(
     name = "rules_android_ndk",
@@ -637,24 +646,40 @@ new_local_repository(
     path = ".",
 )
 
-http_archive(
+# http_archive(
+#     name = "android_opencv",
+#     build_file = "@//third_party:opencv_android.BUILD",
+#     strip_prefix = "OpenCV-android-sdk",
+#     type = "zip",
+#     url = "https://github.com/opencv/opencv/releases/download/4.12.0/opencv-4.12.0-android-sdk.zip",
+# )
+new_local_repository(
     name = "android_opencv",
     build_file = "@//third_party:opencv_android.BUILD",
-    strip_prefix = "OpenCV-android-sdk",
-    type = "zip",
-    url = "https://github.com/opencv/opencv/releases/download/4.12.0/opencv-4.12.0-android-sdk.zip",
+    # For local Android builds, the path should point to an opencv@3 installation.
+    # If you edit the path here, you will also need to update the corresponding
+    # prefix in "opencv_macos.BUILD".
+    path = "/Users/visla/github/opencv/dist/android/sdk/",  # e.g. /usr/local/Cellar for HomeBrew
 )
 
 # After OpenCV 3.2.0, the pre-compiled opencv2.framework has google protobuf symbols, which will
 # trigger duplicate symbol errors in the linking stage of building a mediapipe ios app.
 # To get a higher version of OpenCV for iOS, opencv2.framework needs to be built from source with
 # '-DBUILD_PROTOBUF=OFF -DBUILD_opencv_dnn=OFF'.
-http_archive(
+# http_archive(
+#     name = "ios_opencv",
+#     build_file = "@//third_party:opencv_ios.BUILD",
+#     sha256 = "7dd536d06f59e6e1156b546bd581523d8df92ce83440002885ec5abc06558de2",
+#     type = "zip",
+#     url = "https://github.com/opencv/opencv/releases/download/3.2.0/opencv-3.2.0-ios-framework.zip",
+# )
+new_local_repository(
     name = "ios_opencv",
     build_file = "@//third_party:opencv_ios.BUILD",
-    sha256 = "7dd536d06f59e6e1156b546bd581523d8df92ce83440002885ec5abc06558de2",
-    type = "zip",
-    url = "https://github.com/opencv/opencv/releases/download/3.2.0/opencv-3.2.0-ios-framework.zip",
+    # For local MacOS builds, the path should point to an opencv@3 installation.
+    # If you edit the path here, you will also need to update the corresponding
+    # prefix in "opencv_macos.BUILD".
+    path = "/Users/visla/github/opencv/build_ios/dist/",  # e.g. /usr/local/Cellar for HomeBrew
 )
 
 # Building an opencv.xcframework from the OpenCV 4.5.3 sources is necessary for
@@ -916,6 +941,9 @@ http_archive(
     strip_prefix = "skia-226ae9d866748a2e68b6dbf114b37129c380a298/include/config",
     urls = ["https://github.com/google/skia/archive/226ae9d866748a2e68b6dbf114b37129c380a298.zip"],
 )
+android_sdk_repository(name = "androidsdk", path = "/Users/visla/Library/android_sdk")
+android_ndk_repository(name = "androidndk", api_level = 21, path = "/Users/visla/Library/android_ndk_r28c/android-ndk-r28c")
+bind(name = "android/crosstool", actual = "@androidndk//:toolchain")
 
 # Hedron's Compile Commands Extractor for Bazel
 # https://github.com/hedronvision/bazel-compile-commands-extractor

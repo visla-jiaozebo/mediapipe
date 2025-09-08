@@ -1,48 +1,52 @@
 # Description:
-#   OpenCV libraries for video/image processing on iOS
+#   OpenCV libraries for video/image processing on MacOS
 
-load(
-    "@build_bazel_rules_apple//apple:apple.bzl",
-    "apple_static_framework_import",
-)
+load("@bazel_skylib//lib:paths.bzl", "paths")
 
 licenses(["notice"])  # BSD license
 
 exports_files(["LICENSE"])
 
-apple_static_framework_import(
-    name = "OpencvFramework",
-    framework_imports = glob(["opencv2.framework/**"]),
-    visibility = ["//visibility:public"],
-)
+# Example configurations:
+#
+# # OpenCV 3
+# To configure OpenCV 3, obtain the path of OpenCV 3 from Homebrew. The
+# following commands show the output of the command with version 3.4.16_10:
+#
+# $ brew ls opencv@3 | grep version.hpp
+# $ /opt/homebrew/Cellar/opencv@3/3.4.16_10/include/opencv2/core/version.hpp
+#
+# Then set path in "macos_opencv" rule in the WORKSPACE file to
+# "/opt/homebrew/Cellar" and the PREFIX below to "opencv/<version>" (e.g.
+# "opencv/3.4.16_10" for the example above).
+#
+# # OpenCV 4
+# To configure OpenCV 4, obtain the path of OpenCV 4 from Homebrew. The
+# following commands show the output of the command with version 4.10.0_12:
+#
+# $ brew ls opencv | grep version.hpp
+# $ /opt/homebrew/Cellar/opencv/4.10.0_12/include/opencv4/opencv2/core/version.hpp
+# $ /opt/homebrew/Cellar/opencv/4.10.0_12/include/opencv4/opencv2/dnn/version.hpp
+#
+# Then set path in "macos_opencv" rule in the WORKSPACE file to
+# "/opt/homebrew/Cellar" and the PREFIX below to "opencv/<version>" (e.g.
+# "opencv/4.10.0_12" for the example above). For OpenCV 4, you will also need to
+# adjust the include paths. The header search path should be
+# "include/opencv4/opencv2/**/*.h*" and the include prefix needs to be set to
+# "include/opencv4".
 
-objc_library(
-    name = "opencv_objc_lib",
-    deps = [":OpencvFramework"],
-)
+PREFIX = "ios"
 
 cc_library(
     name = "opencv",
-    hdrs = glob([
-        "opencv2.framework/Versions/A/Headers/**/*.h*",
-    ]),
-    copts = [
-        "-std=c++11",
-        "-x objective-c++",
-    ],
-    include_prefix = "opencv2",
-    linkopts = [
-        "-framework AssetsLibrary",
-        "-framework CoreFoundation",
-        "-framework CoreGraphics",
-        "-framework CoreMedia",
-        "-framework Accelerate",
-        "-framework CoreImage",
-        "-framework AVFoundation",
-        "-framework CoreVideo",
-        "-framework QuartzCore",
-    ],
-    strip_include_prefix = "opencv2.framework/Versions/A/Headers",
+    srcs = glob(
+        [
+            paths.join(PREFIX, "lib/libopencv_core.410.dylib"),
+            paths.join(PREFIX, "lib/libopencv_imgproc.410.dylib"),
+        ],
+    ),
+    hdrs = glob([paths.join(PREFIX, "include/opencv4/opencv2/**/*.h*")]),
+    includes = [paths.join(PREFIX, "include/opencv4")],
+    linkstatic = 1,
     visibility = ["//visibility:public"],
-    deps = [":opencv_objc_lib"],
 )
